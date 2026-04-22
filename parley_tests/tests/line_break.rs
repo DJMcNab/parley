@@ -312,6 +312,7 @@ fn break_by_length_with_multi_codepoint_emoji() {
 /// 1. A layout broken with `break_all_lines(None)` (breaks on newlines only)
 /// 2. A layout broken with `break_next_with_length` using cluster counts from (1)
 #[test]
+#[ignore = "This test is only meaningful if hanging whitespace isn't collapsed, but we revert https://github.com/linebender/parley/pull/276, so it does apply."]
 fn break_by_length_matches_max_advance_with_letter_spacing() {
     let mut env = TestEnv::new(test_name!(), None);
 
