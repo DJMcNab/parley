@@ -15,7 +15,7 @@ env:
   RUST_STABLE_VER: "1.95"
   # Seconds of wall-clock sampling per benchmark (Tango's `-t`). Higher values
   # reduce measurement noise at the cost of CI time.
-  BENCH_TIME: "2"
+  BENCH_TIME: "4"
   # Percentage below which a difference is treated as noise rather than a real
   # change (Tango's `--noise-threshold`, default 1). Raised to keep small jitter
   # from being marked statistically significant (`*`) on shared CI runners.
