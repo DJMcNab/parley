@@ -33,7 +33,7 @@ env:
   # `Default Style - {arabic,latin} 1 paragraph`, which repeatedly showed ~5-30%
   # swings on identical code on shared CI runners while their 20-character and
   # 4-paragraph siblings stayed stable. `*` matches within a name.
-  BENCH_FILTER: "{Styled*,Default Style*4 paragraph,Default Style - japanese 1 paragraph}"
+  BENCH_FILTER: "{*4 paragraph}"
 
 name: Benchmark
 
