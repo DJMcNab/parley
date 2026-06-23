@@ -1,0 +1,49 @@
+# Posts the Tango benchmark results produced by `benchmark.yml` as a single,
+# auto-updating pull request comment.
+#
+# This runs on `workflow_run` rather than `pull_request` so that it executes in the
+# trusted base-repository context with write permissions, without ever building or
+# running untrusted PR code. It only consumes the artifact uploaded by the bench
+# workflow. This is what lets the comment work for pull requests from forks.
+#
+# The comment is posted by `actions/github-script` (a first-party GitHub action)
+# running `.github/scripts/post-benchmark-comment.js`. The script is taken from the
+# checked-out default branch, i.e. the trusted version, never the PR's version.
+
+name: Benchmark comment
+
+on:
+  workflow_run:
+    workflows: ["Benchmark"]
+    types:
+      - completed
+
+permissions:
+  pull-requests: write
+
+jobs:
+  comment:
+    name: post benchmark comment
+    runs-on: ubuntu-latest
+    # Only the benchmark workflow uploads the artifact on success; skip otherwise.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      # Checks out the default branch (the trusted version), so the comment script
+      # below is the reviewed one and not anything from the pull request.
+      - name: checkout comment script
+        uses: actions/checkout@v4
+
+      - name: download comment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-comment
+          path: pr-comment
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: post or update sticky comment
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const post = require('./.github/scripts/post-benchmark-comment.js')
+            await post({ github, context, core })

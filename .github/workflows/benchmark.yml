@@ -1,0 +1,183 @@
+# Runs the Tango paired benchmark suite on every pull request, comparing the PR
+# head against the merge base, and uploads a rendered comment as an artifact.
+#
+# This workflow deliberately runs with only read permissions and never touches the
+# pull request itself, because it executes untrusted code from PR branches
+# (including forks). The companion `benchmark-comment.yml` workflow runs in the
+# trusted base-repository context, downloads the artifact produced here, and posts
+# the result as a single auto-updating PR comment.
+#
+# This is currently a reporting-only experiment: it never fails the build on a
+# regression. See the "compare" step for where gating would be added in future.
+
+env:
+  # Keep in sync with `ci.yml`.
+  RUST_STABLE_VER: "1.95"
+  # Seconds of wall-clock sampling per benchmark (Tango's `-t`). Higher values
+  # reduce measurement noise at the cost of CI time.
+  BENCH_TIME: "2"
+  # Percentage below which a difference is treated as noise rather than a real
+  # change (Tango's `--noise-threshold`, default 1). Raised to keep small jitter
+  # from being marked statistically significant (`*`) on shared CI runners.
+  BENCH_NOISE_THRESHOLD: "2"
+  # Tango `-f` name glob selecting which benchmarks to compare; empty runs all of
+  # them. We target the `Default Style`/`Styled` benches because those time Parley's
+  # own layout pipeline (shaping + line breaking + alignment) inside the measured
+  # loop. The `Draw`/`Glyph Render` benches are deliberately excluded: their hot loop
+  # is dominated by the `vello_cpu`/`glifo` renderer (an external dependency), with
+  # the layout built once outside the timed region, so they track renderer perf
+  # rather than Parley.
+  #
+  # Tango's `-f` only includes (there is no exclude/negation), so the glob below
+  # enumerates the benches we want. It is `{Default Style*,Styled*}` minus
+  # `Default Style - {arabic,latin} 1 paragraph`, which repeatedly showed ~5-30%
+  # swings on identical code on shared CI runners while their 20-character and
+  # 4-paragraph siblings stayed stable. `*` matches within a name.
+  BENCH_FILTER: "{Styled*,Default Style*20 characters,Default Style*4 paragraph,Default Style - japanese 1 paragraph}"
+
+name: Benchmark
+
+on:
+  pull_request:
+
+# Cancel superseded benchmark runs for the same PR.
+concurrency:
+  group: bench-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: tango paired benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout PR head
+        uses: actions/checkout@v4
+        with:
+          # Check out the actual PR head (not the synthetic merge commit) and fetch
+          # full history so the merge base is reachable.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: install stable toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_STABLE_VER }}
+
+      - name: install fontconfig-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install libfontconfig-dev
+
+      - name: install cargo-export
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-export
+
+      - name: restore cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: compute merge base
+        id: merge-base
+        run: |
+          set -euo pipefail
+          BASE_SHA='${{ github.event.pull_request.base.sha }}'
+          HEAD_SHA='${{ github.event.pull_request.head.sha }}'
+          # Ensure the base commit and its ancestry are present locally.
+          git fetch --no-tags origin "$BASE_SHA"
+          MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          echo "Merge base: $MERGE_BASE"
+          echo "merge_base=$MERGE_BASE" >> "$GITHUB_OUTPUT"
+
+      - name: build baseline from merge base
+        run: |
+          set -euo pipefail
+          git checkout --detach '${{ steps.merge-base.outputs.merge_base }}'
+          # `target/` is git-ignored, so the exported binary survives the checkout
+          # back to the PR head below.
+          cargo export target/benchmarks -- bench --bench=main -p parley_bench
+
+      - name: restore PR head
+        run: git checkout --detach '${{ github.event.pull_request.head.sha }}'
+
+      # The comparison step is the single seam for future regression gating.
+      #
+      # Tango already exits non-zero whenever any benchmark shows a statistically
+      # significant regression, so today we capture that exit code but deliberately
+      # ignore it: this is reporting-only and must never fail the build (otherwise
+      # the artifact would not upload and no comment would post). To turn on gating
+      # later, replace the final line with `exit "$status"` (and likely tune
+      # `--noise-threshold` / pass `--samples` or `-t` to stabilise CI noise).
+      #
+      # The baseline path must be absolute: `cargo bench` runs the bench binary with
+      # its working directory set to the package dir (parley_bench/), so a relative
+      # path would resolve against the wrong directory.
+      - name: compare against baseline
+        run: |
+          set -uo pipefail
+          # --filter-outliers discards outlier samples from the statistics, which
+          # suppresses the occasional huge single-benchmark spike seen on shared CI
+          # runners (e.g. a baseline window that happens to get descheduled).
+          compare_args=(
+            compare "$GITHUB_WORKSPACE/target/benchmarks/main"
+            --seed 0
+            -t "$BENCH_TIME"
+            --noise-threshold "$BENCH_NOISE_THRESHOLD"
+            --filter-outliers
+          )
+          if [ -n "$BENCH_FILTER" ]; then
+            compare_args+=(-f "$BENCH_FILTER")
+          fi
+          tango_status=0
+          NO_COLOR=1 cargo bench -q --bench=main -p parley_bench -- \
+            "${compare_args[@]}" \
+            | tee bench-output.txt || tango_status=$?
+          # Make the status available to the render step (and the comment banner).
+          echo "TANGO_STATUS=$tango_status" >> "$GITHUB_ENV"
+          if [ "$tango_status" -ne 0 ]; then
+            echo "::warning title=Possible Parley benchmark regression::Tango exited with status ${tango_status}: at least one benchmark slowed by more than the ${BENCH_NOISE_THRESHOLD}% noise threshold (see the '*' rows). On shared CI runners this is frequently noise — informational only, the build is not failed."
+          else
+            echo "Tango exit code: 0 — no significant regressions."
+          fi
+
+      - name: render comment
+        run: |
+          set -euo pipefail
+          BASE='${{ steps.merge-base.outputs.merge_base }}'
+          HEAD='${{ github.event.pull_request.head.sha }}'
+          if [ -n "$BENCH_FILTER" ]; then
+            scope="Benchmarks matching \`${BENCH_FILTER}\`"
+          else
+            scope="All benchmarks"
+          fi
+          config_note="${scope}, sampled \`-t ${BENCH_TIME}\`s each, outliers filtered, \`*\` marks changes beyond \`${BENCH_NOISE_THRESHOLD}%\`."
+          {
+            echo "## 📊 Tango benchmark results"
+            echo
+            if [ "${TANGO_STATUS:-0}" -ne 0 ]; then
+              echo "> [!WARNING]"
+              echo "> Tango exited with a failing status (\`${TANGO_STATUS}\`): at least one benchmark slowed by more than the \`${BENCH_NOISE_THRESHOLD}%\` noise threshold (see the \`*\` rows below). On shared CI runners this is frequently noise rather than a real regression. This check is informational and never blocks merging."
+              echo
+            fi
+            echo "Comparing \`${HEAD:0:9}\` (PR head) against merge base \`${BASE:0:9}\`."
+            echo
+            echo "$config_note"
+            echo
+            echo "Negative percentages are faster; \`*\` marks a statistically significant change. This check is informational and never blocks merging."
+            echo
+            echo '```text'
+            cat bench-output.txt
+            echo '```'
+          } > comment.md
+          echo '${{ github.event.pull_request.number }}' > pr-number.txt
+
+      - name: upload comment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-comment
+          path: |
+            comment.md
+            pr-number.txt
+          if-no-files-found: error
