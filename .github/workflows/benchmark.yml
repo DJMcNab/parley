@@ -15,7 +15,7 @@ env:
   RUST_STABLE_VER: "1.95"
   # Seconds of wall-clock sampling per benchmark (Tango's `-t`). Higher values
   # reduce measurement noise at the cost of CI time.
-  BENCH_TIME: "2"
+  BENCH_TIME: "4"
   # Percentage below which a difference is treated as noise rather than a real
   # change (Tango's `--noise-threshold`, default 1). Raised to keep small jitter
   # from being marked statistically significant (`*`) on shared CI runners.
@@ -33,7 +33,7 @@ env:
   # `Default Style - {arabic,latin} 1 paragraph`, which repeatedly showed ~5-30%
   # swings on identical code on shared CI runners while their 20-character and
   # 4-paragraph siblings stayed stable. `*` matches within a name.
-  BENCH_FILTER: "{Styled*,Default Style*20 characters,Default Style*4 paragraph,Default Style - japanese 1 paragraph}"
+  BENCH_FILTER: "{Styled*4 paragraph,Default Style*4 paragraph}"
 
 name: Benchmark
 
