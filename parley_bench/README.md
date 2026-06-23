@@ -26,4 +26,4 @@ cargo export target/benchmarks -- bench --bench=main
 cargo bench -q --bench=main -- compare ../target/benchmarks/main
 ```
 
-<!-- Trivial change to exercise the Tango benchmark CI experiment. Revert before merge. -->
+<!-- Trivial change to exercise the Tango benchmark CI experiment. Revert before merge. 2 -->
