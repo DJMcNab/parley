@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Apple emoji — Phase Three: metrically-compatible with Noto Color Emoji</title>
+  <link data-trunk rel="rust" />
+  <link data-trunk rel="copy-file" href="../../../parley_dev/assets/fonts/arimo_fonts/Arimo-VariableFont_wght.ttf" />
+  <style>
+    @font-face {
+      font-family: 'Arimo';
+      src: url('Arimo-VariableFont_wght.ttf') format('truetype');
+    }
+
+    /* Validation-only: real Noto Color Emoji, served ONLY by validate.py's harness
+       route (/noto-ref/...), never bundled by trunk/dist. Used purely to measure a
+       reference advance width in-page; never drawn on the #parley canvas path. */
+    @font-face {
+      font-family: 'NotoRef';
+      src: url('/noto-ref/NotoColorEmoji-Regular.ttf') format('truetype');
+    }
+
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 1rem;
+      background: #fff;
+    }
+
+    #native {
+      font-family: 'Arimo', sans-serif;
+      font-size: 48px;
+      white-space: pre;
+      background: #fff;
+      margin: 0;
+    }
+
+    #ref-row {
+      font-family: 'Arimo', 'NotoRef';
+      font-size: 48px;
+      white-space: pre;
+      background: #fff;
+      margin: 0;
+    }
+
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      background: #fff;
+    }
+
+    #scratch {
+      display: none;
+    }
+
+    .row {
+      margin: 8px 0;
+      position: relative;
+    }
+
+    /* Comparison box overlay for rows 1/3 (browser-native HTML rows). The canvas row
+       (Parley + Vello) draws its own, identically-defined box directly into the pixmap
+       — see phase_three/src/render.rs's `draw_comparison_box`. Same size/color on every
+       row so emoji size and position can be compared across rows. */
+    .cmp-box {
+      position: absolute;
+      box-sizing: border-box;
+      border: 1px solid rgba(255, 0, 255, 0.6);
+      pointer-events: none;
+    }
+
+    /* Zero-size `vertical-align: baseline` inline-block: its (identical) top/bottom
+       edge sits exactly on the row's alphabetic baseline. Used transiently to measure
+       the baseline y in `drawComparisonBoxes` below. */
+    .baseline-probe {
+      display: inline-block;
+      width: 0;
+      height: 0;
+      vertical-align: baseline;
+    }
+
+    .label {
+      font: 12px ui-monospace, monospace;
+      color: #555;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Apple System Emoji — Phase Three (metrically compatible with Noto Color Emoji)</h1>
+  <div id="status">Starting…</div>
+  <div class="row">
+    <div class="label">Browser-native (Arimo + system emoji):</div>
+    <div id="native">Hi &#128512; world &#127881;!</div>
+  </div>
+  <div class="row">
+    <div class="label">Parley + Vello CPU (emoji = inline boxes sized to Noto advances, blitted with scaled Apple
+      emoji pixels):</div>
+    <canvas id="parley"></canvas>
+  </div>
+  <div class="row">
+    <div class="label" id="ref-label">Browser-native (Arimo + real Noto Color Emoji, reference):</div>
+    <div id="ref-row">Hi &#128512; world &#127881;!</div>
+  </div>
+  <canvas id="scratch"></canvas>
+  <div id="data-phase-three" hidden></div>
+  <!-- Validation-only reference measurement JSON, produced by the script below (not by
+       the Rust/wasm app), using the real Noto Color Emoji font loaded above. -->
+  <div id="data-noto-ref" hidden></div>
+
+  <script>
+    const EXAMPLE_TEXT = "Hi \u{1F600} world \u{1F389}!";
+    const EMOJI = ["\u{1F600}", "\u{1F389}"];
+    const FONT_SIZE = 48;
+
+    async function measureNotoRef() {
+      try {
+        await document.fonts.load(`${FONT_SIZE}px 'NotoRef'`);
+        await document.fonts.ready;
+      } catch (e) {
+        // Fall through; measurement below will reveal a fallback-font mismeasure.
+      }
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      // Full string with Arimo for Latin, NotoRef for emoji (§6.1 of the plan).
+      ctx.font = `${FONT_SIZE}px 'Arimo', 'NotoRef'`;
+      const line_width = ctx.measureText(EXAMPLE_TEXT).width;
+
+      // Per-emoji, NotoRef-only stack (avoids any ambiguity about which font wins).
+      ctx.font = `${FONT_SIZE}px 'NotoRef'`;
+      const per_emoji = {};
+      for (const ch of EMOJI) {
+        per_emoji[ch] = ctx.measureText(ch).width;
+      }
+
+      const emoji_advance_sum = EMOJI.reduce((sum, ch) => sum + per_emoji[ch], 0);
+
+      // Annotate the reference row's label if NotoRef didn't actually load (e.g. the
+      // page is being served without validate.py's harness, so /noto-ref/... 404s and
+      // the row silently falls back to the system emoji font).
+      const notoLoaded = document.fonts.check(`${FONT_SIZE}px 'NotoRef'`);
+      if (!notoLoaded) {
+        const label = document.getElementById('ref-label');
+        if (label) {
+          label.textContent += ' [NotoRef font not loaded — showing system fallback; ' +
+            'serve via validate.py\'s harness for the real reference]';
+        }
+      }
+
+      document.getElementById('data-noto-ref').textContent = JSON.stringify({
+        line_width,
+        emoji_advance_sum,
+        per_emoji,
+        noto_loaded: notoLoaded,
+      });
+    }
+
+    measureNotoRef();
+
+    // Comparison box overlay for rows 1/3 (see .cmp-box above; row 2's box is drawn
+    // directly into the canvas pixmap by the Rust app, see render.rs). Same fixed
+    // dimensions in every row (per user ruling): width = the Noto advance at FONT_SIZE,
+    // vertical extent = the Noto font's ascent/descent band relative to the baseline.
+    const BOX_WIDTH = 1275 / 1024 * 48;
+    const BOX_ASCENT = 950 / 1024 * 48;
+    const BOX_DESCENT = 250 / 1024 * 48;
+
+    async function drawComparisonBoxes() {
+      try {
+        await document.fonts.ready;
+      } catch (e) {
+        // Fall through; boxes will just use whatever fonts are ready yet.
+      }
+      for (const rowId of ['native', 'ref-row']) {
+        const row = document.getElementById(rowId);
+        if (!row) continue;
+
+        // The box divs are `position: absolute`, and `row` itself isn't a positioning
+        // context (only the outer `.row` wrapper — which also contains the label above
+        // — has `position: relative`). So a box appended under `row` is actually
+        // positioned relative to `.row`'s border box, not `row`'s. Anchor all
+        // coordinates to that same containing block, or the box ends up shifted up by
+        // the label's height.
+        const container = row.closest('.row') || row;
+        const containerRect = container.getBoundingClientRect();
+
+        // Baseline: append a transient zero-size baseline-aligned inline-block and read
+        // its rect (top === bottom, since height is 0) — a robust, DOM-only way to find
+        // a row's alphabetic baseline without separately computing font metrics.
+        const probe = document.createElement('span');
+        probe.className = 'baseline-probe';
+        row.appendChild(probe);
+        const baselineY = probe.getBoundingClientRect().bottom - containerRect.top;
+        probe.remove();
+
+        // Pen-left per emoji: a DOM Range spanning exactly the emoji character. Browsers
+        // tile a text node's per-character client rects left-to-right by advance width,
+        // so the range's left edge is the emoji's advance-box left edge (its pen
+        // position) — the same quantity `ib.x` / `blit.x` give in the Rust app.
+        const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+          const text = node.nodeValue;
+          for (const ch of EMOJI) {
+            let idx = text.indexOf(ch);
+            while (idx !== -1) {
+              const range = document.createRange();
+              range.setStart(node, idx);
+              range.setEnd(node, idx + ch.length);
+              const rect = range.getBoundingClientRect();
+              const left = rect.left - containerRect.left;
+
+              const box = document.createElement('div');
+              box.className = 'cmp-box';
+              box.style.left = `${left}px`;
+              box.style.top = `${baselineY - BOX_ASCENT}px`;
+              box.style.width = `${BOX_WIDTH}px`;
+              box.style.height = `${BOX_ASCENT + BOX_DESCENT}px`;
+              container.appendChild(box);
+
+              idx = text.indexOf(ch, idx + ch.length);
+            }
+          }
+        }
+      }
+    }
+
+    drawComparisonBoxes();
+  </script>
+</body>
+
+</html>

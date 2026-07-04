@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Apple emoji ink survey — measured vs provided</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1rem; }
+    #status { font-family: ui-monospace, monospace; }
+    #data { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Apple Emoji Ink Survey</h1>
+  <div id="status">Starting…</div>
+  <pre id="summary"></pre>
+  <pre id="data"></pre>
+  <script>
+  "use strict";
+
+  // Font sizes to survey. 48px matches the phases; 128px for resolution cross-check.
+  const FONT_SIZES = [48, 128];
+  const FONT_STACK = "'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif";
+  // Alpha threshold for a pixel to count as "ink".
+  const ALPHA_THRESHOLD = 16;
+  // Max pairwise RGB channel difference for a pixel to count as "colored".
+  const COLOR_CHANNEL_DIFF = 12;
+  // Padding around the expected ink box in the scratch canvas.
+  const PAD = 40;
+
+  // Build the candidate emoji code point list: a wide selection of single-scalar
+  // emoji spanning categories. We over-generate and let the color check filter
+  // out anything that renders as tofu / monochrome fallback.
+  function buildCandidates() {
+    const cps = new Set();
+    const addRange = (lo, hi) => { for (let c = lo; c <= hi; c++) cps.add(c); };
+    addRange(0x1F300, 0x1F5FF); // Misc symbols & pictographs (weather, animals, food, objects...)
+    addRange(0x1F600, 0x1F64F); // Emoticons (smileys) + some hands/gestures
+    addRange(0x1F680, 0x1F6FF); // Transport & map symbols
+    addRange(0x1F900, 0x1F9FF); // Supplemental symbols & pictographs (hands, faces, animals)
+    addRange(0x1FA70, 0x1FAFF); // Symbols & pictographs extended-A
+    addRange(0x2600,  0x26FF);  // Misc symbols (weather, signs)
+    addRange(0x2700,  0x27BF);  // Dingbats
+    // Ensure the phases' hero emoji are present.
+    cps.add(0x1F600); // 😀
+    cps.add(0x1F389); // 🎉
+    return Array.from(cps).sort((a, b) => a - b);
+  }
+
+  function categoryFor(cp) {
+    if (cp >= 0x1F600 && cp <= 0x1F64F) return "smiley/gesture";
+    if (cp >= 0x1F680 && cp <= 0x1F6FF) return "transport/symbol";
+    if (cp >= 0x1F900 && cp <= 0x1F9FF) return "supplemental";
+    if (cp >= 0x1FA70 && cp <= 0x1FAFF) return "extended-A";
+    if (cp >= 0x1F300 && cp <= 0x1F5FF) return "misc-pictograph";
+    if (cp >= 0x2600 && cp <= 0x26FF) return "misc-symbol";
+    if (cp >= 0x2700 && cp <= 0x27BF) return "dingbat";
+    return "other";
+  }
+
+  // Measure one emoji at one font size. Returns null if it does not render as a
+  // color emoji (no colored pixels => tofu / monochrome fallback).
+  function measureEmoji(ctx, canvas, ch, size) {
+    ctx.font = `${size}px ${FONT_STACK}`;
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+    const tm = ctx.measureText(ch);
+
+    // provided ink from TextMetrics.
+    const advance = tm.width;
+    const abbL = tm.actualBoundingBoxLeft;
+    const abbR = tm.actualBoundingBoxRight;
+    const abbA = tm.actualBoundingBoxAscent;
+    const abbD = tm.actualBoundingBoxDescent;
+
+    // Size the scratch canvas generously around the expected ink, plus wide pad so
+    // pixel ink cannot be clipped even if it exceeds the provided box.
+    const w = Math.ceil(Math.max(abbL + abbR, advance, size) + 2 * PAD);
+    const h = Math.ceil(Math.max(abbA + abbD, size) + 2 * PAD);
+    canvas.width = w;
+    canvas.height = h;
+    // Reset state after resize.
+    ctx.font = `${size}px ${FONT_STACK}`;
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+    ctx.clearRect(0, 0, w, h);
+
+    // Pen origin: place baseline & pen so provided ink box sits inside with pad.
+    const originX = PAD + abbL;
+    const originY = PAD + abbA;
+    ctx.fillText(ch, originX, originY);
+
+    const img = ctx.getImageData(0, 0, w, h).data;
+    let minX = Infinity, minY = Infinity, maxX = -1, maxY = -1;
+    let inkCount = 0, coloredCount = 0;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4;
+        const a = img[idx + 3];
+        if (a > ALPHA_THRESHOLD) {
+          inkCount++;
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+          const r = img[idx], g = img[idx + 1], b = img[idx + 2];
+          const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+          if (mx - mn > COLOR_CHANNEL_DIFF) coloredCount++;
+        }
+      }
+    }
+
+    if (inkCount === 0) return { rendered: false, colored: false };
+    if (coloredCount === 0) return { rendered: true, colored: false };
+
+    // Convert pixel ink box to coordinates relative to the pen origin & baseline.
+    // measured ink extents:
+    const measLeft = originX - minX;          // ink extent left of pen (positive => left)
+    const measRight = (maxX + 1) - originX;   // ink extent right of pen
+    const measAscent = originY - minY;        // ink above baseline
+    const measDescent = (maxY + 1) - originY; // ink below baseline
+    const measW = (maxX + 1) - minX;
+    const measH = (maxY + 1) - minY;
+    // Center of the measured ink relative to the advance box [0, advance].
+    const inkCenterX = ((minX + maxX + 1) / 2) - originX; // relative to pen (0)
+    const advanceCenter = advance / 2;
+    const centerOffset = inkCenterX - advanceCenter;
+
+    const borderClipped =
+      minX === 0 || minY === 0 || maxX === w - 1 || maxY === h - 1;
+
+    return {
+      rendered: true,
+      colored: true,
+      borderClipped,
+      // provided (TextMetrics)
+      advance,
+      provLeft: abbL, provRight: abbR, provAscent: abbA, provDescent: abbD,
+      provInkW: abbL + abbR,
+      provInkH: abbA + abbD,
+      // measured (pixels)
+      measLeft, measRight, measAscent, measDescent,
+      measInkW: measW,
+      measInkH: measH,
+      inkCount, coloredCount,
+      centerOffset,
+    };
+  }
+
+  async function run() {
+    const status = document.getElementById("status");
+    const dataEl = document.getElementById("data");
+    if (document.fonts && document.fonts.ready) {
+      try { await document.fonts.ready; } catch (e) {}
+    }
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    const candidates = buildCandidates();
+    const results = [];
+    let skipped = 0, notRendered = 0;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const cp = candidates[i];
+      const ch = String.fromCodePoint(cp);
+      // Survey primarily at 48px; also capture 128px.
+      const per = {};
+      let colorOk = false;
+      for (const size of FONT_SIZES) {
+        const m = measureEmoji(ctx, canvas, ch, size);
+        if (m.colored) colorOk = true;
+        per[size] = m;
+      }
+      if (!per[48].rendered && !per[128].rendered) { notRendered++; continue; }
+      if (!colorOk) { skipped++; continue; }
+      // Require the 48px pass to be colored to keep the set consistent.
+      if (!per[48].colored) { skipped++; continue; }
+
+      results.push({
+        cp,
+        hex: "U+" + cp.toString(16).toUpperCase(),
+        category: categoryFor(cp),
+        m48: per[48],
+        m128: per[128].colored ? per[128] : null,
+      });
+
+      if (i % 100 === 0) {
+        status.textContent = `Surveying… ${i}/${candidates.length} (kept ${results.length})`;
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    }
+
+    dataEl.textContent = JSON.stringify({
+      fontSizes: FONT_SIZES,
+      candidateCount: candidates.length,
+      keptCount: results.length,
+      skippedNonColor: skipped,
+      notRendered,
+      results,
+    });
+    status.textContent = `done — surveyed ${candidates.length}, kept ${results.length}, skipped ${skipped} non-color, ${notRendered} unrendered`;
+  }
+
+  run();
+  </script>
+</body>
+</html>

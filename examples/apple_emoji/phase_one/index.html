@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Apple system emoji — Phase One pixel/metric capture</title>
+  <link data-trunk rel="rust" />
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 1rem;
+    }
+
+    canvas {
+      border: 1px solid #999;
+      image-rendering: pixelated;
+      margin: 0.5rem;
+    }
+
+    #metrics {
+      white-space: pre;
+      font-family: ui-monospace, monospace;
+    }
+
+    .ok {
+      color: green;
+      font-weight: bold;
+    }
+
+    .bad {
+      color: red;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Apple System Emoji — Phase One</h1>
+  <div id="status">Starting…</div>
+  <div>
+    <div>Canvas A — browser <code>fillText</code>:</div>
+    <canvas id="source"></canvas>
+  </div>
+  <div>
+    <div>Canvas B — reconstructed from Rust-held pixels:</div>
+    <canvas id="roundtrip"></canvas>
+  </div>
+  <h2>Metrics (read by Rust)</h2>
+  <div id="metrics"></div>
+  <div id="data-phase-one" hidden></div>
+</body>
+
+</html>

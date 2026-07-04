@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Apple emoji — Phase Two: Parley+Vello vs native</title>
+  <link data-trunk rel="rust" />
+  <link data-trunk rel="copy-file" href="../../../parley_dev/assets/fonts/arimo_fonts/Arimo-VariableFont_wght.ttf" />
+  <style>
+    @font-face {
+      font-family: 'Arimo';
+      src: url('Arimo-VariableFont_wght.ttf') format('truetype');
+    }
+
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 1rem;
+      background: #fff;
+    }
+
+    #native {
+      font-family: 'Arimo', sans-serif;
+      font-size: 48px;
+      white-space: pre;
+      background: #fff;
+      margin: 0;
+    }
+
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      background: #fff;
+    }
+
+    #scratch {
+      display: none;
+    }
+
+    .row {
+      margin: 8px 0;
+    }
+
+    .label {
+      font: 12px ui-monospace, monospace;
+      color: #555;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Apple System Emoji — Phase Two</h1>
+  <div id="status">Starting…</div>
+  <div class="row">
+    <div class="label">Browser-native (Arimo + system emoji):</div>
+    <div id="native">Hi &#128512; world &#127881;!</div>
+  </div>
+  <div class="row">
+    <div class="label">Parley + Vello CPU (emoji = inline boxes, blitted with captured Apple emoji pixels):</div>
+    <canvas id="parley"></canvas>
+  </div>
+  <canvas id="scratch"></canvas>
+  <div id="data-phase-two" hidden></div>
+</body>
+
+</html>

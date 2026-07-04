@@ -1,0 +1,34 @@
+[package]
+name = "apple_emoji_phase_one"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+wasm-bindgen = "0.2.100"
+wasm-bindgen-futures = "0.4.50"
+js-sys = "0.3.77"
+console_error_panic_hook = "0.1.7"
+
+[dependencies.web-sys]
+version = "0.3.77"
+features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "HtmlCanvasElement",
+    "CanvasRenderingContext2d",
+    "TextMetrics",
+    "ImageData",
+    "Node",
+    "Navigator",
+    "console",
+    "FontFaceSet",
+]
+
+[lints]
+workspace = true

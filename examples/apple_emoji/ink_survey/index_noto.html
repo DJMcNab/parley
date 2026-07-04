@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Noto Color Emoji ink survey — pixel ink vs uniform advance</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1rem; }
+    #status { font-family: ui-monospace, monospace; }
+    #data { display: none; }
+    /* Measurement-only: the real Noto Color Emoji font served by survey.py. */
+    @font-face {
+      font-family: 'NotoSurvey';
+      src: url('/noto-ref') format('truetype');
+    }
+  </style>
+</head>
+<body>
+  <h1>Noto Color Emoji Ink Survey</h1>
+  <div id="status">Starting…</div>
+  <pre id="data"></pre>
+  <script>
+  "use strict";
+
+  const FONT_SIZES = [48, 128];
+  // ONLY NotoSurvey — no fallback. Non-covered emoji render as browser tofu
+  // (monochrome), which the colored-pixel check drops. This guarantees we never
+  // silently measure the system Apple font.
+  const FONT_STACK = "'NotoSurvey'";
+  const ALPHA_THRESHOLD = 16;
+  const COLOR_CHANNEL_DIFF = 12;
+  const PAD = 60;
+  // Noto Color Emoji uniform advance: 1275/1024 em (see phase_three render.rs).
+  const NOTO_ADV_EM = 1275 / 1024;
+
+  // Same candidate ranges as the Apple survey (index.html).
+  function buildCandidates() {
+    const cps = new Set();
+    const addRange = (lo, hi) => { for (let c = lo; c <= hi; c++) cps.add(c); };
+    addRange(0x1F300, 0x1F5FF);
+    addRange(0x1F600, 0x1F64F);
+    addRange(0x1F680, 0x1F6FF);
+    addRange(0x1F900, 0x1F9FF);
+    addRange(0x1FA70, 0x1FAFF);
+    addRange(0x2600,  0x26FF);
+    addRange(0x2700,  0x27BF);
+    cps.add(0x1F600);
+    cps.add(0x1F389);
+    return Array.from(cps).sort((a, b) => a - b);
+  }
+
+  function categoryFor(cp) {
+    if (cp >= 0x1F600 && cp <= 0x1F64F) return "smiley/gesture";
+    if (cp >= 0x1F680 && cp <= 0x1F6FF) return "transport/symbol";
+    if (cp >= 0x1F900 && cp <= 0x1F9FF) return "supplemental";
+    if (cp >= 0x1FA70 && cp <= 0x1FAFF) return "extended-A";
+    if (cp >= 0x1F300 && cp <= 0x1F5FF) return "misc-pictograph";
+    if (cp >= 0x2600 && cp <= 0x26FF) return "misc-symbol";
+    if (cp >= 0x2700 && cp <= 0x27BF) return "dingbat";
+    return "other";
+  }
+
+  // Measure one emoji at one font size using NotoSurvey. The advance box is the
+  // uniform Noto design advance (NOT TextMetrics.width, which is a headless
+  // constant); the pen origin sits at the box left, baseline at PAD+ascent.
+  function measureEmoji(ctx, canvas, ch, size) {
+    const advance = NOTO_ADV_EM * size; // uniform design advance in px
+    // Generous canvas; Noto glyphs can slightly exceed the advance box.
+    const w = Math.ceil(advance + 2 * PAD);
+    const h = Math.ceil(size + 2 * PAD);
+    canvas.width = w;
+    canvas.height = h;
+    ctx.font = `${size}px ${FONT_STACK}`;
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+    ctx.clearRect(0, 0, w, h);
+
+    // Pen origin at the advance-box left edge; baseline PAD + (Noto ascent ~ size).
+    const originX = PAD;
+    const originY = PAD + size; // alphabetic baseline; ascent region above
+    ctx.fillText(ch, originX, originY);
+
+    const img = ctx.getImageData(0, 0, w, h).data;
+    let minX = Infinity, minY = Infinity, maxX = -1, maxY = -1;
+    let inkCount = 0, coloredCount = 0;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4;
+        const a = img[idx + 3];
+        if (a > ALPHA_THRESHOLD) {
+          inkCount++;
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+          const r = img[idx], g = img[idx + 1], b = img[idx + 2];
+          const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+          if (mx - mn > COLOR_CHANNEL_DIFF) coloredCount++;
+        }
+      }
+    }
+
+    if (inkCount === 0) return { rendered: false, colored: false };
+    if (coloredCount === 0) return { rendered: true, colored: false };
+
+    const measLeft = originX - minX;          // ink left of pen origin (advance-box left)
+    const measRight = (maxX + 1) - originX;   // ink right of pen origin
+    const measAscent = originY - minY;        // ink above baseline
+    const measDescent = (maxY + 1) - originY; // ink below baseline
+    const measW = (maxX + 1) - minX;
+    const measH = (maxY + 1) - minY;
+    const inkCenterX = ((minX + maxX + 1) / 2) - originX;
+    const advanceCenter = advance / 2;
+    const centerOffset = inkCenterX - advanceCenter;
+    const borderClipped =
+      minX === 0 || minY === 0 || maxX === w - 1 || maxY === h - 1;
+
+    return {
+      rendered: true,
+      colored: true,
+      borderClipped,
+      advance,          // uniform Noto design advance px
+      measLeft, measRight, measAscent, measDescent,
+      measInkW: measW,
+      measInkH: measH,
+      inkCount, coloredCount,
+      centerOffset,
+    };
+  }
+
+  async function run() {
+    const status = document.getElementById("status");
+    const dataEl = document.getElementById("data");
+
+    // Explicitly load NotoSurvey at both sizes before measuring.
+    let fontLoaded = false;
+    if (document.fonts && document.fonts.load) {
+      try {
+        await document.fonts.load("48px 'NotoSurvey'", "😀");
+        await document.fonts.load("128px 'NotoSurvey'", "😀");
+        await document.fonts.ready;
+        fontLoaded = document.fonts.check("48px 'NotoSurvey'", "😀");
+      } catch (e) {}
+    }
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    const candidates = buildCandidates();
+    const results = [];
+    let skipped = 0, notRendered = 0;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const cp = candidates[i];
+      const ch = String.fromCodePoint(cp);
+      const per = {};
+      let colorOk = false;
+      for (const size of FONT_SIZES) {
+        const m = measureEmoji(ctx, canvas, ch, size);
+        if (m.colored) colorOk = true;
+        per[size] = m;
+      }
+      if (!per[48].rendered && !per[128].rendered) { notRendered++; continue; }
+      if (!colorOk) { skipped++; continue; }
+      if (!per[48].colored) { skipped++; continue; }
+
+      results.push({
+        cp,
+        hex: "U+" + cp.toString(16).toUpperCase(),
+        category: categoryFor(cp),
+        m48: per[48],
+        m128: per[128].colored ? per[128] : null,
+      });
+
+      if (i % 100 === 0) {
+        status.textContent = `Surveying… ${i}/${candidates.length} (kept ${results.length})`;
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    }
+
+    dataEl.textContent = JSON.stringify({
+      font: "NotoColorEmoji-Regular (NotoSurvey)",
+      fontLoaded,
+      notoAdvanceEm: NOTO_ADV_EM,
+      fontSizes: FONT_SIZES,
+      candidateCount: candidates.length,
+      keptCount: results.length,
+      skippedNonColor: skipped,
+      notRendered,
+      results,
+    });
+    status.textContent = `done — surveyed ${candidates.length}, kept ${results.length}, `
+      + `skipped ${skipped} non-color, ${notRendered} unrendered, fontLoaded=${fontLoaded}`;
+  }
+
+  run();
+  </script>
+</body>
+</html>

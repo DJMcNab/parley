@@ -1,0 +1,17 @@
+[package]
+name = "fake_font_gen"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+skrifa = { workspace = true, default-features = true }
+read-fonts = { workspace = true, default-features = true }
+write-fonts = "0.48.1"
+parley = { workspace = true, default-features = true }
+
+[lints]
+workspace = true
