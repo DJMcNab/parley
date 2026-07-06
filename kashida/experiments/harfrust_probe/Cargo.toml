@@ -1,0 +1,18 @@
+# Standalone experiment crate for the Kashida investigation.
+# Detached from the Parley workspace via an empty [workspace] table so it does
+# not need to be a workspace member.
+[package]
+name = "harfrust_probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+harfrust = "0.10.0"
+skrifa = "0.43.2"
+
+[[bin]]
+name = "probe"
+path = "src/main.rs"
