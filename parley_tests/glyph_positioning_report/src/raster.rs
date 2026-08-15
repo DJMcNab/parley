@@ -76,7 +76,8 @@ pub(crate) fn render(output: &GlyphOutput, geometry: Geometry, fonts: &Fonts) ->
     let mut caches = CpuGlyphCaches::default();
     let mut image_cache = ImageCache::new_with_config(AtlasConfig::default());
     context.set_transform(
-        Affine::scale(f64::from(SCALE)) * Affine::translate(Vec2::new(PADDING.into(), PADDING.into())),
+        Affine::scale(f64::from(SCALE))
+            * Affine::translate(Vec2::new(PADDING.into(), PADDING.into())),
     );
     context.set_paint(Color::BLACK);
 

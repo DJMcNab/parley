@@ -11,8 +11,7 @@ use std::sync::Arc;
 
 use fontique::{Blob, Collection, CollectionOptions, SourceCache};
 use parley::{
-    FontContext, FontFamily, Layout, LayoutContext, LineHeight, PositionedLayoutItem,
-    StyleProperty,
+    FontContext, FontFamily, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty,
 };
 use parley_glyph_positioning_cases::{
     Case, FONTS, GlyphOutput, GlyphOutputBuilder, MAX_ADVANCE_EPSILON, Style,

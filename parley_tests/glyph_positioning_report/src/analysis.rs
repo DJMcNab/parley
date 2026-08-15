@@ -13,8 +13,8 @@ use std::ops::Range;
 
 use parley::{Layout, LayoutContext, PositionedLayoutItem};
 use parley_glyph_positioning_cases::{
-    FONTS, FailureSignature, GlyphOutput, Golden, Mismatch, PositionedGlyph, compare, half_ulp_6sig,
-    x_matches, y_matches,
+    FONTS, FailureSignature, GlyphOutput, Golden, Mismatch, PositionedGlyph, compare,
+    half_ulp_6sig, x_matches, y_matches,
 };
 use parley_glyph_positioning_extract::{layout, parley_output};
 
@@ -128,7 +128,12 @@ impl CaseReport {
         let mut layout_cx = LayoutContext::new();
         let laid_out = layout(&golden.case, font_cx, &mut layout_cx);
         let parley = parley_output(&laid_out);
-        let text: String = golden.case.runs.iter().map(|run| run.text.as_str()).collect();
+        let text: String = golden
+            .case
+            .runs
+            .iter()
+            .map(|run| run.text.as_str())
+            .collect();
 
         let mismatch = compare(&parley, &golden.output).err();
         let mut clusters = collect_clusters(&laid_out, &text);
@@ -167,7 +172,10 @@ impl CaseReport {
 
     /// The emission index of the first disagreeing glyph.
     pub(crate) fn first_divergence(&self) -> Option<usize> {
-        self.rows.iter().find(|row| !row.matches).map(|row| row.index)
+        self.rows
+            .iter()
+            .find(|row| !row.matches)
+            .map(|row| row.index)
     }
 
     /// The largest `|dx|` over all glyphs, and the largest `|dy|`.

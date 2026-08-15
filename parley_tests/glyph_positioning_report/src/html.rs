@@ -42,16 +42,12 @@ pub(crate) fn escape(text: &str) -> String {
 /// Hand-rolled rather than taken as a dependency: this is the only base64 in the crate,
 /// and it is write-only.
 pub(crate) fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
-        let bits = chunk
-            .iter()
-            .enumerate()
-            .fold(0_u32, |acc, (index, &byte)| {
-                acc | (u32::from(byte) << (16 - 8 * index))
-            });
+        let bits = chunk.iter().enumerate().fold(0_u32, |acc, (index, &byte)| {
+            acc | (u32::from(byte) << (16 - 8 * index))
+        });
         for index in 0..chunk.len() + 1 {
             out.push(char::from(
                 ALPHABET[((bits >> (18 - 6 * index)) & 0x3f) as usize],

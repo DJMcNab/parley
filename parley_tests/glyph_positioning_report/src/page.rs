@@ -30,7 +30,12 @@ const STYLE: &str = include_str!("page.css");
 const SCRIPT: &str = include_str!("page.js");
 
 /// Renders the page for one case.
-pub(crate) fn render(report: &CaseReport, name: &str, chrome_png: &[u8], parley_png: &[u8]) -> String {
+pub(crate) fn render(
+    report: &CaseReport,
+    name: &str,
+    chrome_png: &[u8],
+    parley_png: &[u8],
+) -> String {
     let mut out = String::new();
     let geometry = report.geometry;
 
@@ -38,12 +43,7 @@ pub(crate) fn render(report: &CaseReport, name: &str, chrome_png: &[u8], parley_
     writeln!(out, "<html lang=\"en\">").unwrap();
     writeln!(out, "<head>").unwrap();
     writeln!(out, "<meta charset=\"utf-8\">").unwrap();
-    writeln!(
-        out,
-        "<title>{} — glyph positioning</title>",
-        escape(name)
-    )
-    .unwrap();
+    writeln!(out, "<title>{} — glyph positioning</title>", escape(name)).unwrap();
     writeln!(out, "<style>{STYLE}</style>").unwrap();
     writeln!(out, "</head>").unwrap();
     writeln!(out, "<body>").unwrap();
@@ -151,12 +151,13 @@ fn panels(out: &mut String, report: &CaseReport, chrome_png: &[u8], parley_png: 
     let geometry = report.geometry;
     let chrome_uri = format!("data:image/png;base64,{}", base64(chrome_png));
     let parley_uri = format!("data:image/png;base64,{}", base64(parley_png));
-    let size = format!(
-        "width:{}px;height:{}px",
-        geometry.width, geometry.height
-    );
+    let size = format!("width:{}px;height:{}px", geometry.width, geometry.height);
 
-    writeln!(out, "<div id=\"font-error\" class=\"font-error\" hidden></div>").unwrap();
+    writeln!(
+        out,
+        "<div id=\"font-error\" class=\"font-error\" hidden></div>"
+    )
+    .unwrap();
     // Two cells plus the column gap: what caps the flex container at two per row.
     writeln!(
         out,
@@ -386,13 +387,17 @@ fn diff_table(out: &mut String, report: &CaseReport) {
                 || "—".to_string(),
                 |cluster| format!("#{} {}", cluster.index, escape(&cluster.text))
             ),
-            row.chrome.map_or_else(|| "—".to_string(), |g| g.x.to_string()),
-            row.parley.map_or_else(|| "—".to_string(), |g| g.x.to_string()),
+            row.chrome
+                .map_or_else(|| "—".to_string(), |g| g.x.to_string()),
+            row.parley
+                .map_or_else(|| "—".to_string(), |g| g.x.to_string()),
             row.dx
                 .map_or_else(|| "—".to_string(), |dx| format!("{dx:+.6}")),
             row.x_tolerance,
-            row.chrome.map_or_else(|| "—".to_string(), |g| g.y.to_string()),
-            row.parley.map_or_else(|| "—".to_string(), |g| g.y.to_string()),
+            row.chrome
+                .map_or_else(|| "—".to_string(), |g| g.y.to_string()),
+            row.parley
+                .map_or_else(|| "—".to_string(), |g| g.y.to_string()),
             row.dy
                 .map_or_else(|| "—".to_string(), |dy| format!("{dy:+.6}")),
             row.y_tolerance,

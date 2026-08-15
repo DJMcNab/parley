@@ -71,9 +71,7 @@ impl Args {
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--out" => {
-                    out = Some(PathBuf::from(
-                        args.next().ok_or("--out needs a directory")?,
-                    ));
+                    out = Some(PathBuf::from(args.next().ok_or("--out needs a directory")?));
                 }
                 other if other.starts_with("--") => {
                     return Err(format!("unknown option {other}"));
@@ -124,7 +122,8 @@ fn run(args: &Args) -> Result<String, String> {
         return Err("no golden files found".to_string());
     }
 
-    std::fs::create_dir_all(&args.out).map_err(|error| format!("{}: {error}", args.out.display()))?;
+    std::fs::create_dir_all(&args.out)
+        .map_err(|error| format!("{}: {error}", args.out.display()))?;
 
     let mut font_cx = font_context();
     let fonts = raster::Fonts::new();
