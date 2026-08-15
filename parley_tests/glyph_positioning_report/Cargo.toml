@@ -1,0 +1,23 @@
+[package]
+name = "parley_glyph_positioning_report"
+description = "Generates browsable HTML reports for glyph-positioning Chrome-parity cases"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+parley = { workspace = true, features = ["std"] }
+parley_glyph_positioning_cases = { workspace = true }
+parley_glyph_positioning_extract = { workspace = true }
+glifo = { workspace = true, features = ["std", "vello_cpu"] }
+peniko = { workspace = true, features = ["std"] }
+# `png` is what turns a rasterised case into the images the pages reference.
+vello_cpu = { workspace = true, features = ["std", "png"] }
+# Only for the general category of a character, so the hex list can put a dotted-circle
+# base under a lone combining mark instead of letting it drift onto its neighbour.
+icu_properties = { workspace = true, features = ["compiled_data"] }
+
+[lints]
+workspace = true

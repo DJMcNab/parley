@@ -1,0 +1,58 @@
+<!doctype html>
+<!--
+Copyright 2026 the Parley Authors
+SPDX-License-Identifier: Apache-2.0 OR MIT
+
+The browser half of the glyph-positioning Chrome-parity harness. Served by the
+in-container agent at `/harness/harness.html`, alongside the bundled `harness.js` and
+one uploaded font per registered font. See
+`doc/glyph-positioning-recorder-agent.md`.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Parley ↔ Chrome glyph-positioning harness</title>
+    <style>
+    /*
+    One rule per registered font, `src` naming the file the driver uploads to the
+    agent under `/harness/<name>` — resolved relative to this page's own
+    `/harness/harness.html` URL, so it reaches the same endpoint. v1 has exactly one
+    font; this filename/family coupling is what multi-font support has to generalise.
+    */
+    @font-face {
+      font-family: "Roboto";
+      src: url("Roboto.ttf") format("truetype");
+    }
+
+    /*
+    Deliberately minimal: only the properties the comparison depends on, with
+    everything else left to the pinned Chrome's UA defaults.
+
+    Do NOT add `font-variant-ligatures` here. Parley already disables
+    liga/clig/dlig/hlig when letter-spacing is non-zero, matching Blink, so
+    pinning the property would break the match rather than tighten it.
+    */
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+    }
+
+    #content {
+      /* Zero Blink's strut, so the line box is the union over the spans alone,
+         which is Parley's model. Each run sets its own font-size. */
+      font-size: 0;
+      /* Parley hangs an overflowing space past the break, which is `pre-wrap`
+         behaviour; `normal` would collapse it away and `break-spaces` would not
+         hang. This also preserves leading/trailing spaces, as Parley does. */
+      white-space: pre-wrap;
+      text-rendering: geometric-precision;
+    }
+    </style>
+    <script src="harness.js"></script>
+  </head>
+
+  <body>
+    <!-- `renderAndCapture` creates `#content`; there is deliberately nothing here. -->
+  </body>
+</html>

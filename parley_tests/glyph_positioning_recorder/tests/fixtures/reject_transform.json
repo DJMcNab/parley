@@ -1,0 +1,33 @@
+{
+   "_comment": "Hand-written. Phase 0 found no transform or save/restore command appears at all — absolute coordinates are baked into each DrawTextBlob origin — so this cannot be captured with the v1 harness. Asserts an unmodelled transform is refused loudly rather than skipped, since silently ignoring one produces a uniform offset across every glyph.",
+   "version": 1,
+   "commands": [
+      {
+         "command": "Concat44",
+         "visible": true,
+         "matrix": [
+            [ 1, 0, 0, 12 ],
+            [ 0, 1, 0, 34 ],
+            [ 0, 0, 1, 0 ],
+            [ 0, 0, 0, 1 ]
+         ]
+      },
+      {
+         "command": "DrawTextBlob",
+         "visible": true,
+         "x": 0,
+         "y": 22,
+         "runs": [
+            {
+               "font": {
+                  "textSize": 24,
+                  "typeface": { "data": "data/0" }
+               },
+               "coords": [ 0, 0 ],
+               "glyphs": [ 44 ],
+               "positions": [ 0 ]
+            }
+         ]
+      }
+   ]
+}

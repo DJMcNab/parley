@@ -1,0 +1,133 @@
+/*
+Copyright 2026 the Parley Authors
+SPDX-License-Identifier: Apache-2.0 OR MIT
+*/
+
+body {
+  margin: 0 auto;
+  padding: 24px;
+  max-width: 1200px;
+  font-family: system-ui, sans-serif;
+  color: #111;
+  background: #fff;
+}
+
+h1 {
+  font-size: 1.4rem;
+}
+
+h2 {
+  margin: 32px 0 8px;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #555;
+  border-bottom: 1px solid #ddd;
+}
+
+.summary {
+  color: #555;
+}
+
+.errors code {
+  color: #a11;
+}
+
+/*
+`content-visibility` is what keeps a large fuzz haul cheap: a card that has never been
+scrolled to is not rendered, so its two mask images are never fetched. This is the
+lazy-loading equivalent for CSS-composited thumbnails, which cannot carry `loading`.
+*/
+.card {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-left-width: 6px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
+}
+
+.card.pass {
+  border-left-color: #0a6b2e;
+}
+
+.card.known-fail {
+  border-left-color: #c80;
+}
+
+.card.surprise {
+  border-left-color: #a11;
+  background: #fff6f6;
+}
+
+.thumb {
+  position: relative;
+  flex: none;
+  background: #fff;
+  border: 1px solid #eee;
+  overflow: hidden;
+}
+
+.thumb .tint {
+  position: absolute;
+  left: 0;
+  top: 0;
+  mix-blend-mode: multiply;
+}
+
+.thumb .chrome {
+  filter: url(#tint-chrome);
+}
+
+.thumb .parley {
+  filter: url(#tint-parley);
+}
+
+.detail h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.status {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.card.pass .status {
+  color: #0a6b2e;
+}
+
+.card.known-fail .status {
+  color: #c80;
+}
+
+.card.surprise .status {
+  color: #a11;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+dt {
+  color: #555;
+}
+
+dd {
+  margin: 0;
+  font-family: ui-monospace, monospace;
+}
+
+.note {
+  margin: 8px 0 0;
+  max-width: 70ch;
+  color: #555;
+  font-size: 0.78rem;
+}

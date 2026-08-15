@@ -1,0 +1,281 @@
+/*
+Copyright 2026 the Parley Authors
+SPDX-License-Identifier: Apache-2.0 OR MIT
+
+Deliberately plain. The only styling that carries meaning is the pastel cluster tinting
+and the highlight state, which are shared by the boxes, the hex list and the diff table
+so one colour identifies one cluster everywhere on the page.
+
+Each of those elements carries its cluster's hue as an inline `--hue`, and every rule
+below builds its colour from `--hue` directly. Hoisting the colour into a shared
+`--pastel` on `:root` does not work: a custom property's `var()` is substituted where
+the property is *declared*, so `--pastel` would resolve against the root's `--hue` and
+every cluster would come out the same colour.
+*/
+
+/*
+No width cap: the panels are laid out at the raster's true CSS-px size — they cannot be
+scaled down, because the cluster boxes are positioned in layout coordinates — so two
+1000px-wide cases side by side are simply 2000px wide. Prose is capped individually
+instead.
+*/
+body {
+  margin: 0;
+  padding: 24px;
+  font-family: system-ui, sans-serif;
+  color: #111;
+  background: #fff;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+h2 {
+  margin: 32px 0 8px;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #555;
+}
+
+.verdict {
+  margin: 4px 0 16px;
+  font-weight: 600;
+}
+
+.verdict.pass {
+  color: #0a6b2e;
+}
+
+.verdict.fail {
+  color: #a11;
+}
+
+.caption {
+  margin: 0 0 8px;
+  max-width: 70ch;
+  color: #555;
+  font-size: 0.85rem;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 16px;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.meta dt {
+  color: #555;
+}
+
+.meta dd {
+  margin: 0;
+  font-family: ui-monospace, monospace;
+}
+
+/*
+The 2×2 grid: {Chrome, Parley} above {overlay, your browser}.
+
+This is flex-wrap rather than `grid`, and the two-per-row limit comes from a `max-width`
+of two cells plus the gap, set inline by the generator. `repeat(auto-fit, ...)` cannot
+express it: auto-fit needs a *fixed* track size, and a cell is as wide as its case.
+Wrapping means a case too wide for two columns falls back to one, which for a 1000px
+case is most screens — better than scrolling the whole page sideways.
+*/
+.panels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 8px 24px;
+  margin-top: 24px;
+}
+
+.cell {
+  flex: 0 0 auto;
+  margin: 0;
+  /* Rows share a baseline: headings are one line, so the panels' tops line up and the
+     captions below can differ in length without shifting anything. */
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+}
+
+.cell h2 {
+  margin: 0 0 6px;
+}
+
+.cell figcaption {
+  margin-top: 6px;
+  color: #555;
+  font-size: 0.85rem;
+}
+
+/*
+Every panel shares one coordinate space: the raster's CSS-px size, including the
+padding baked into the geometry. That is what lets the cluster boxes be positioned in
+layout coordinates and still land on the glyphs.
+*/
+.panel {
+  position: relative;
+  /* The live panel's padding has to sit *inside* the shared geometry, or its text
+     starts at a different origin than the rasters' glyphs do. */
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid #ddd;
+  overflow: hidden;
+}
+
+.panel img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* Parley's raster is drawn on top of the cluster boxes so the glyphs aren't tinted,
+     but that means it would otherwise catch every hover before it reaches them. */
+  pointer-events: none;
+}
+
+/*
+Behind the glyphs: the image above it is transparent except where glyphs are. Plain by
+default — the pastel identity tint only shows up for a cluster that actually diverges
+from Chrome, since a matching cluster isn't evidence of anything.
+*/
+.cbox {
+  position: absolute;
+  transition: background-color 80ms ease-out;
+}
+
+.cbox.mismatch {
+  background: hsl(var(--hue, 0) 70% 88%);
+}
+
+.overlay .tint {
+  position: absolute;
+  left: 0;
+  top: 0;
+  mix-blend-mode: multiply;
+}
+
+.overlay .chrome {
+  filter: url(#tint-chrome);
+}
+
+.overlay .parley {
+  filter: url(#tint-parley);
+}
+
+/* Mirrors `container/agent/harness.html`'s `#content` rules. Keep the two in step. */
+.live-content {
+  font-size: 0;
+  white-space: pre-wrap;
+  text-rendering: geometric-precision;
+}
+
+.font-error {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border: 1px solid #a11;
+  background: #fee;
+  color: #a11;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+.chars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.ch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: background-color 80ms ease-out;
+}
+
+.ch.mismatch {
+  background: hsl(var(--hue, 0) 70% 88%);
+}
+
+.ch.orphan {
+  background: repeating-linear-gradient(45deg, #eee, #eee 4px, #fff 4px, #fff 8px);
+}
+
+.ch code {
+  font-size: 0.65rem;
+  color: #444;
+}
+
+.ch .sample {
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+}
+
+th,
+td {
+  padding: 2px 8px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+th {
+  border-bottom: 1px solid #ccc;
+  color: #555;
+  font-weight: 600;
+}
+
+td.cluster {
+  text-align: left;
+  transition: background-color 80ms ease-out;
+}
+
+td.cluster.mismatch {
+  background: hsl(var(--hue, 0) 70% 88%);
+}
+
+tr.bad td.delta,
+tr.bad td:first-child {
+  color: #a11;
+  font-weight: 700;
+}
+
+tr.bad {
+  background: #fff6f6;
+}
+
+/* The shared highlight state, applied to every element carrying the same cluster. */
+.active,
+tr.active td.cluster {
+  background: hsl(var(--hue, 0) 85% 66%) !important;
+}
+
+.cbox.active {
+  outline: 1px solid hsl(var(--hue) 85% 40%);
+}
+
+details {
+  margin-top: 32px;
+}
+
+pre {
+  overflow-x: auto;
+  padding: 12px;
+  background: #f6f6f6;
+  font-size: 0.75rem;
+}

@@ -1,0 +1,77 @@
+seed 6
+note known-issue: decomposition-cluster bug (parley_engine's shaped-cluster boundary detection groups a font-decomposed character's synthesized glyphs under one cluster, so the cumulative advance diverges from Chrome's; see "A real Parley bug, found via the uniform offset cases" in doc/glyph-positioning-chrome-parity-phase4.md)
+width 735.1719
+runs 1
+run 24 0 0 46.421875
+ō⅛ñŽ Ђ₤ﬂ∑ ˇмẀ΄вΏҺõбñ—ρ ỪӠӤễẤá¬ũӚçԈαĊҠ ľǿỄ Ὅ?Β АԀӋ¾§Ӿ₪ ϋѩẼӌ Ӫ ō _ЙӑбѰ
+styles 1
+style 24 Roboto-Regular
+glyphs 68
+glyph 761 0 31 0
+glyph 424 13.6875 31 0
+glyph 682 32.1328 31 0
+glyph 809 45.375 31 0
+glyph 4 59.7422 31 0
+glyph 210 65.6836 31 0
+glyph 407 83.6719 31 0
+glyph 445 97.6172 31 0
+glyph 430 111.246 31 0
+glyph 4 125.297 31 0
+glyph 159 131.238 31 0
+glyph 243 141.891 31 0
+glyph 979 159.691 31 0
+glyph 174 180.984 31 0
+glyph 235 187.137 31 0
+glyph 908 200.848 31 0
+glyph 331 217.043 31 0
+glyph 686 233.344 31 0
+glyph 234 247.031 31 0
+glyph 682 260.297 31 0
+glyph 386 273.539 31 0
+glyph 199 292.277 31 0
+glyph 4 305.871 31 0
+glyph 1128 311.812 31 0
+glyph 345 328.5 31 0
+glyph 1033 342.469 31 0
+glyph 1091 359.578 31 0
+glyph 1058 372.293 31 0
+glyph 667 387.949 31 0
+glyph 110 401.004 31 0
+glyph 789 414.293 31 0
+glyph 1024 427.523 31 0
+glyph 673 444.105 31 0
+glyph 358 456.668 31 0
+glyph 187 479.93 31 0
+glyph 704 493.488 31 0
+glyph 313 509.109 31 0
+glyph 4 528.75 31 0
+glyph 750 534.691 31 0
+glyph 814 542.273 31 0
+glyph 1090 555.867 31 0
+glyph 4 569.508 31 0
+glyph 1226 575.449 31 0
+glyph 35 592.77 31 0
+glyph 911 604.102 31 0
+glyph 4 619.047 31 0
+glyph 950 0 77 0
+glyph 351 15.6562 77 0
+glyph 1145 30.5391 77 0
+glyph 127 46.9688 77 0
+glyph 105 65.6367 77 0
+glyph 1160 80.3555 77 0
+glyph 412 95.4023 77 0
+glyph 4 113.906 77 0
+glyph 937 119.848 77 0
+glyph 272 132.938 77 0
+glyph 1082 151.066 77 0
+glyph 1146 164.707 77 0
+glyph 4 177.75 77 0
+glyph 1039 183.691 77 0
+glyph 4 200.016 77 0
+glyph 761 205.957 77 0
+glyph 4 219.645 77 0
+glyph 67 225.586 77 0
+glyph 954 236.414 77 0
+glyph 1017 253.523 77 0
+glyph 234 266.578 77 0
+glyph 1000 279.844 77 0

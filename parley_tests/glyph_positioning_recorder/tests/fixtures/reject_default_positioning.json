@@ -1,0 +1,22 @@
+{
+   "_comment": "Hand-written. A kDefault run omits `positions` entirely and its per-glyph positions are not recoverable from the dump, so it must be refused rather than guessed at. Blink has not been observed emitting one, hence the synthetic fixture.",
+   "version": 1,
+   "commands": [
+      {
+         "command": "DrawTextBlob",
+         "visible": true,
+         "x": 0,
+         "y": 22,
+         "runs": [
+            {
+               "font": {
+                  "textSize": 24,
+                  "typeface": { "data": "data/0" }
+               },
+               "coords": [ 0, 0 ],
+               "glyphs": [ 44, 73, 80 ]
+            }
+         ]
+      }
+   ]
+}

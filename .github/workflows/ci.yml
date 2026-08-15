@@ -15,9 +15,9 @@ env:
   # List of features that depend on the standard library and will be excluded from no_std checks.
   FEATURES_DEPENDING_ON_STD: "std,default,png,system,vello_hybrid"
   # List of packages that can not target Wasm.
-  NO_WASM_PKGS: "--exclude xtask --exclude parley_bench --exclude parley_data_gen"
+  NO_WASM_PKGS: "--exclude xtask --exclude parley_bench --exclude parley_data_gen --exclude parley_glyph_positioning_recorder"
   # List of packages that can not target Android.
-  NO_ANDROID_PKGS: "--exclude xtask --exclude parley_bench --exclude parley_data_gen"
+  NO_ANDROID_PKGS: "--exclude xtask --exclude parley_bench --exclude parley_data_gen --exclude parley_glyph_positioning_recorder"
 
 
 # Rationale
@@ -423,6 +423,49 @@ jobs:
 
       - name: check for differences
         run: git diff --exit-code
+
+  # Checks the glyph-positioning recorder's in-container agent (TypeScript for Deno).
+  # No Docker here, same as the rest of CI: this only lints/typechecks
+  # `container/agent/`, it doesn't run the container. See
+  # doc/glyph-positioning-recorder-agent.md.
+  deno-agent:
+    name: deno (glyph-positioning recorder agent)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: read pinned Deno version from the recorder's Dockerfile
+        id: deno-version
+        # `ARG DENO_VERSION` in the Dockerfile is the single source of truth; this
+        # reads it back out rather than pinning the version a second time here.
+        run: |
+          version=$(grep -oP '^ARG DENO_VERSION=\K.*' parley_tests/glyph_positioning_recorder/container/Dockerfile)
+          if [ -z "$version" ]; then
+            echo "could not find ARG DENO_VERSION in the recorder's Dockerfile" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: install deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: ${{ steps.deno-version.outputs.version }}
+
+      - name: deno check (agent.ts, deno.ns config)
+        working-directory: parley_tests/glyph_positioning_recorder/container/agent
+        run: deno check agent.ts
+
+      - name: deno check (harness.ts, DOM config)
+        working-directory: parley_tests/glyph_positioning_recorder/container/agent
+        run: deno check --config deno.harness.json harness.ts
+
+      - name: deno lint
+        working-directory: parley_tests/glyph_positioning_recorder/container/agent
+        run: deno lint .
+
+      - name: deno fmt
+        working-directory: parley_tests/glyph_positioning_recorder/container/agent
+        run: deno fmt --check .
 
   # If this fails, consider changing your text or adding something to .typos.toml.
   typos:

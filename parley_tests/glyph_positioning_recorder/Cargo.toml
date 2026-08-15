@@ -1,0 +1,29 @@
+[package]
+name = "parley_glyph_positioning_recorder"
+description = "Chrome-side recording harness for glyph-positioning Chrome-parity testing"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+parley = { workspace = true }
+parley_glyph_positioning_cases = { workspace = true }
+# `fuzz_loop` is the one place both sides are built, so it needs the Parley side too.
+parley_glyph_positioning_extract = { workspace = true }
+fantoccini = "0.21.5"
+# `raw_value` backs the tag-first command deserialization in `skp_json`, which
+# deliberately never buffers through `serde_json::Value`.
+serde_json = { version = "1.0.150", features = ["raw_value"] }
+# One sequential WebDriver session needs no multi-threaded runtime. `signal` is for the
+# fuzz loop's Ctrl-C handling, which is what lets it print its counts on the way out.
+tokio = { version = "1.53.1", features = ["macros", "rt", "signal", "time"] }
+# The blocking client for the in-container agent (`src/agent.rs`): a handful of
+# localhost HTTP calls per capture, called synchronously from async contexts exactly as
+# the `docker exec` calls it replaces were — no TLS needed, so default features are
+# trimmed.
+ureq = { version = "3.4.0", default-features = false }
+
+[lints]
+workspace = true

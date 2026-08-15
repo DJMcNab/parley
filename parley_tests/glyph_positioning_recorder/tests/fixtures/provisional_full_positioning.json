@@ -1,0 +1,25 @@
+{
+   "_comment": "Hand-written from Skia's kFull serialisation (positions as 2-element arrays, no `coords` term). Phase 4 bring-up step B10 has now run and did NOT produce kFull: a real combining-mark capture came back kHorizontal (see b10_combining_marks.json), so kFull's shape is still unobserved in Chrome output and this fixture remains the only coverage it has.",
+   "version": 1,
+   "commands": [
+      {
+         "command": "DrawTextBlob",
+         "visible": true,
+         "x": 10,
+         "y": 50,
+         "runs": [
+            {
+               "font": {
+                  "textSize": 18.5,
+                  "typeface": { "data": "data/0" }
+               },
+               "glyphs": [ 44, 780 ],
+               "positions": [
+                  [ 0, 0 ],
+                  [ 8.5, -3.25 ]
+               ]
+            }
+         ]
+      }
+   ]
+}

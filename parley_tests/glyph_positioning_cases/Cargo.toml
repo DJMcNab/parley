@@ -1,0 +1,16 @@
+[package]
+name = "parley_glyph_positioning_cases"
+description = "Seeded random test cases for glyph-positioning Chrome-parity testing"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+read-fonts = { workspace = true, features = ["std"] }
+
+[lints]
+workspace = true

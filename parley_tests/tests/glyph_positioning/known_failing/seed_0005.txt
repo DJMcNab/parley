@@ -1,0 +1,57 @@
+seed 5
+note known-issue: decomposition-cluster bug (parley_engine's shaped-cluster boundary detection groups a font-decomposed character's synthesized glyphs under one cluster, so the cumulative advance diverges from Chrome's; see "A real Parley bug, found via the uniform offset cases" in doc/glyph-positioning-chrome-parity-phase4.md)
+width 242.29688
+runs 1
+run 27 0 0 24.15625
+ҹ⅜ѣ ӈǿӯƒèүТ¿Ԃo⅞ýẼȚҟТ љ ђ ‰ỞΑИ ẀωƠѸẩҮ5ềĦԌ ҋ#ѷ ҰӦҺ
+styles 1
+style 27 Roboto-Regular
+glyphs 48
+glyph 330 0 21 0
+glyph 425 14.8975 21 0
+glyph 266 37.9819 21 0
+glyph 4 52.625 21 0
+glyph 339 0 45 0
+glyph 814 15.293 45 0
+glyph 1044 30.5859 45 0
+glyph 151 43.3608 45 0
+glyph 674 52.5498 45 0
+glyph 1011 66.854 45 0
+glyph 961 80.3804 45 0
+glyph 128 96.4907 45 0
+glyph 352 109.266 45 0
+glyph 83 131.467 45 0
+glyph 427 146.865 45 0
+glyph 692 168.513 45 0
+glyph 1082 181.288 45 0
+glyph 782 196.897 45 0
+glyph 1157 213.007 45 0
+glyph 961 227.021 45 0
+glyph 4 242.609 45 0
+glyph 260 0 69 0
+glyph 4 22.8999 69 0
+glyph 258 29.584 69 0
+glyph 4 44.4551 69 0
+glyph 401 51.1392 69 0
+glyph 1116 77.0054 69 0
+glyph 910 95.5415 69 0
+glyph 220 113.155 69 0
+glyph 4 132.406 69 0
+glyph 979 0 93 0
+glyph 206 23.9546 93 0
+glyph 152 46.1953 93 0
+glyph 1005 64.7314 93 0
+glyph 1063 96.0688 93 0
+glyph 1010 110.755 93 0
+glyph 25 126.971 93 0
+glyph 1087 142.132 93 0
+glyph 140 156.437 93 0
+glyph 362 175.342 93 0
+glyph 4 192.094 93 0
+glyph 299 0 118 0
+glyph 7 16.6245 118 0
+glyph 1003 33.249 118 0
+glyph 4 46.7886 118 0
+glyph 1158 53.4727 118 0
+glyph 1035 69.3062 118 0
+glyph 331 87.8687 118 0

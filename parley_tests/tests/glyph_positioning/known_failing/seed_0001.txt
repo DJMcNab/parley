@@ -1,0 +1,75 @@
+seed 1
+note known-issue: decomposition-cluster bug (parley_engine's shaped-cluster boundary detection groups a font-decomposed character's synthesized glyphs under one cluster, so the cumulative advance diverges from Chrome's; see "A real Parley bug, found via the uniform offset cases" in doc/glyph-positioning-chrome-parity-phase4.md)
+width 443.48438
+runs 1
+run 27.25 0 0 33.921875
+ѐСć≠ Ѿộ ừқ—Ӕ ĺҎ‥ўﬄ≠ЗůѮAѧ σΕҿĢV ỢẺѴ• √h ģҿ́ŷ[ñ ‚ Μ9Ζԁäyẽ Σ.@с4ĉ∞ỨЩҘ
+styles 1
+style 27.25 Roboto-Regular
+glyphs 66
+glyph 998 0 25 0
+glyph 960 14.4366 25 0
+glyph 701 32.1731 25 0
+glyph 436 46.4368 25 0
+glyph 4 61.3923 25 0
+glyph 287 68.1383 25 0
+glyph 1111 92.0885 25 0
+glyph 4 107.63 25 0
+glyph 1129 114.375 25 0
+glyph 310 131.234 25 0
+glyph 386 147.307 25 0
+glyph 1020 168.583 25 0
+glyph 4 194.05 25 0
+glyph 746 200.796 25 0
+glyph 301 207.409 25 0
+glyph 398 224.799 25 0
+glyph 978 237.626 25 0
+glyph 447 250.519 25 0
+glyph 436 273.777 25 0
+glyph 219 288.733 25 0
+glyph 795 304.899 25 0
+glyph 277 319.921 25 0
+glyph 37 334.012 25 0
+glyph 270 351.788 25 0
+glyph 4 366.359 25 0
+glyph 201 0 59 0
+glyph 912 15.4346 59 0
+glyph 1150 30.9224 59 0
+glyph 726 47.0621 59 0
+glyph 58 65.6235 59 0
+glyph 4 82.9608 59 0
+glyph 1120 89.7068 59 0
+glyph 1080 108.415 59 0
+glyph 281 123.902 59 0
+glyph 397 141.067 59 0
+glyph 4 150.248 59 0
+glyph 432 156.994 59 0
+glyph 76 173.24 59 0
+glyph 4 188.249 59 0
+glyph 727 194.995 59 0
+glyph 1150 210.283 59 0
+glyph 169 226.422 59 0
+glyph 803 226.422 59 0
+glyph 63 239.316 59 0
+glyph 682 246.541 59 0
+glyph 4 261.576 59 0
+glyph 390 268.322 59 0
+glyph 4 273.737 59 0
+glyph 917 280.483 59 0
+glyph 29 304.274 59 0
+glyph 913 319.575 59 0
+glyph 1053 335.888 59 0
+glyph 670 351.256 59 0
+glyph 93 365.879 59 0
+glyph 1083 378.599 59 0
+glyph 4 393.047 59 0
+glyph 183 0 93 0
+glyph 18 15.5543 93 0
+glyph 36 22.7261 93 0
+glyph 968 47.1952 93 0
+glyph 24 61.4589 93 0
+glyph 703 76.7604 93 0
+glyph 433 91.024 93 0
+glyph 1126 119.046 93 0
+glyph 227 137.993 93 0
+glyph 1006 164.391 93 0

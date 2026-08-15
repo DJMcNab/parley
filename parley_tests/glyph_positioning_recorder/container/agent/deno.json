@@ -1,0 +1,18 @@
+{
+  // The default config: covers `agent.ts` (and `shared.ts`, which it imports) for
+  // `deno check`/`deno run --check`, and this whole directory for `deno lint`/
+  // `deno fmt` (neither of those is lib-sensitive, so one config suffices for both
+  // files). `harness.ts` type-checks under a separate config — see
+  // `deno.harness.json` — because it runs in the browser, not in Deno: no `dom` lib
+  // here (this is a server process; accidentally reaching for `document`/`window`
+  // should be a type error) and no browser globals leaking into `agent.ts`'s surface.
+  "compilerOptions": {
+    "lib": [
+      "deno.ns",
+      "deno.web",
+      "deno.fetch",
+      "deno.shared_globals",
+      "esnext"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+[package]
+name = "parley_glyph_positioning_extract"
+description = "Parley-side layout and extraction for glyph-positioning Chrome-parity testing"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+parley = { workspace = true, features = ["std"] }
+fontique = { workspace = true, features = ["std"] }
+parley_glyph_positioning_cases = { workspace = true }
+
+[lints]
+workspace = true

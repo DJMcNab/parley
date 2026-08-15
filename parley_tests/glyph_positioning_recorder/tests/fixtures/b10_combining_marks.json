@@ -1,0 +1,66 @@
+{
+   "version": 1,
+   "commands": [
+      {
+         "command": "DrawPaint",
+         "visible": true,
+         "paint": {
+            "color": [ 0, 0, 0, 0 ],
+            "blendMode": "Src"
+         }
+      },
+      {
+         "command": "DrawRect",
+         "visible": true,
+         "coords": [ 0, 0, 1280, 2048 ],
+         "paint": {
+            "antiAlias": true,
+            "color": [ 255, 255, 255, 255 ],
+            "blendMode": "Src"
+         },
+         "shortDesc": " [0 0 1280 2048]"
+      },
+      {
+         "command": "DrawTextBlob",
+         "visible": true,
+         "x": 0,
+         "y": 20,
+         "bounds": [ -16.21, -23.2354, 76.1836, 5.96191 ],
+         "paint": {
+            "antiAlias": true
+         },
+         "runs": [
+            {
+               "font": {
+                  "subpixelText": true,
+                  "embeddedBitmapText": true,
+                  "textSize": 22,
+                  "edging": "antialias",
+                  "hinting": "none",
+                  "typeface": {
+                     "data": "data/0"
+                  }
+               },
+               "coords": [ 0, 0 ],
+               "glyphs": [
+                  806,
+                  85,
+                  170,
+                  1223,
+                  79,
+                  172
+               ],
+               "positions": [
+                  0,
+                  10.7314,
+                  23.2354,
+                  23.2354,
+                  39.7676,
+                  50.918
+               ]
+            }
+         ],
+         "shortDesc": " [-16.21 -3.23535 76.1836 25.9619]"
+      }
+   ]
+}

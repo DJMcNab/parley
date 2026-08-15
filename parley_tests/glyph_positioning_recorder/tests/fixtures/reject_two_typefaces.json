@@ -1,0 +1,40 @@
+{
+   "_comment": "Hand-written. Cannot be captured: v1 registers one font and disables system fallback, so two distinct `data/N` keys never arise from a real run. Asserts we refuse it rather than silently averaging two typefaces into one style table.",
+   "version": 1,
+   "commands": [
+      {
+         "command": "DrawTextBlob",
+         "visible": true,
+         "x": 0,
+         "y": 22,
+         "runs": [
+            {
+               "font": {
+                  "textSize": 24,
+                  "typeface": { "data": "data/0" }
+               },
+               "coords": [ 0, 0 ],
+               "glyphs": [ 44 ],
+               "positions": [ 0 ]
+            }
+         ]
+      },
+      {
+         "command": "DrawTextBlob",
+         "visible": true,
+         "x": 40,
+         "y": 22,
+         "runs": [
+            {
+               "font": {
+                  "textSize": 24,
+                  "typeface": { "data": "data/1" }
+               },
+               "coords": [ 0, 0 ],
+               "glyphs": [ 73 ],
+               "positions": [ 0 ]
+            }
+         ]
+      }
+   ]
+}

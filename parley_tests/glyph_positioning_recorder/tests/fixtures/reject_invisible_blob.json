@@ -1,0 +1,23 @@
+{
+   "_comment": "Hand-written. Every Phase 0 capture marks its blobs visible; nothing is known to produce `visible: false`, so it is refused rather than skipped — skipping would silently drop glyphs Parley still has.",
+   "version": 1,
+   "commands": [
+      {
+         "command": "DrawTextBlob",
+         "visible": false,
+         "x": 0,
+         "y": 22,
+         "runs": [
+            {
+               "font": {
+                  "textSize": 24,
+                  "typeface": { "data": "data/0" }
+               },
+               "coords": [ 0, 0 ],
+               "glyphs": [ 44 ],
+               "positions": [ 0 ]
+            }
+         ]
+      }
+   ]
+}

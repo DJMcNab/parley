@@ -13,6 +13,10 @@ members = [
     "parley_tests",
     "parley_tests/linebreaking_cases",
     "parley_tests/linebreaking_browser_recorder",
+    "parley_tests/glyph_positioning_cases",
+    "parley_tests/glyph_positioning_extract",
+    "parley_tests/glyph_positioning_recorder",
+    "parley_tests/glyph_positioning_report",
     "examples/common",
     "examples/swash_render",
     "examples/tiny_skia_render",
@@ -41,6 +45,8 @@ parley_data_gen = { path = "parley_data_gen" }
 parley_dev = { default-features = false, path = "parley_dev" }
 parley_engine = { version = "0.11.0", default-features = false, path = "parley_engine" }
 parley_linebreaking_cases = { path = "parley_tests/linebreaking_cases" }
+parley_glyph_positioning_cases = { path = "parley_tests/glyph_positioning_cases" }
+parley_glyph_positioning_extract = { path = "parley_tests/glyph_positioning_extract" }
 
 # External dependencies
 accesskit = "0.24.0"

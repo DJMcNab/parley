@@ -1,0 +1,9 @@
+{
+  // Used explicitly (`deno check --config deno.harness.json harness.ts`) rather than
+  // auto-discovered: `harness.ts` is bundled for the browser, so it needs `dom`
+  // types (`document`, `requestAnimationFrame`, …) and none of `deno.json`'s
+  // Deno-namespace types, which do not exist at runtime once bundled.
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"]
+  }
+}
