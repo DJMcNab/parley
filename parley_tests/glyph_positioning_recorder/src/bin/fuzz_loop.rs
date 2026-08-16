@@ -110,7 +110,7 @@ async fn main() -> Result<()> {
         };
 
         let laid_out = layout(&case, &mut font_cx, &mut layout_cx);
-        let parley = parley_output(&laid_out);
+        let parley = parley_output(&laid_out, &case);
         if let Err(mismatch) = compare(&parley, &recording.output) {
             mismatches += 1;
             eprintln!("seed {seed}: mismatch\n{mismatch}");

@@ -1,0 +1,116 @@
+seed 15
+note was in known_failing/ as a decomposition-cluster-bug repro; it was in fact Blink's fragment-origin snapping at a wrapped line's hanging trailing whitespace, and passes now that that is modelled
+width 386.96875
+runs 1
+run 15.25 0 0 25.640625
+ҧ Ҙ ј ӿ¾ џь ΏµӡİӺỸѯñźӎẽԀ ˉӑҘ₱ ёұäѻÚӒ ЩЧ·ЄĻ x′ổỏ∆ѽǽẠӳđ ỏĻẲқ ǿÛÜŝXĝ₪γҊồữӠӉlӽ҆ỜҨỏнҺŞZЮ‰ðﬄ ÛӜấЊђ ԂЧйЍẀẮ Ủӊ
+styles 1
+style 15.25 Roboto-Regular
+fragments 5
+fragment 0 17 0 42
+glyph 320 0 0
+glyph 4 13.2544 0
+glyph 1006 17.0297 0
+glyph 4 26.0769 0
+glyph 976 29.8522 0
+glyph 4 33.4934 0
+glyph 1161 37.2687 0
+glyph 127 44.8267 0
+glyph 4 56.6886 0
+glyph 263 60.4639 0
+glyph 254 69.2654 0
+glyph 4 77.5457 0
+glyph 908 81.3209 0
+glyph 118 91.6117 0
+glyph 346 100.249 0
+glyph 738 109.125 0
+glyph 347 113.273 0
+glyph 1140 122.261 0
+glyph 278 131.42 0
+glyph 682 138.769 0
+glyph 806 147.183 0
+glyph 343 154.741 0
+glyph 1083 166.641 0
+glyph 351 174.72 0
+glyph 4 184.177 0
+glyph 160 187.952 0
+glyph 1017 194.944 0
+glyph 1006 203.239 0
+glyph 414 212.286 0
+glyph 4 223.441 0
+glyph 971 227.216 0
+glyph 1159 235.295 0
+glyph 670 242.935 0
+glyph 284 251.23 0
+glyph 662 259.868 0
+glyph 1018 269.757 0
+glyph 4 279.705 0
+glyph 227 283.48 0
+glyph 225 298.053 0
+glyph 176 308.492 0
+glyph 211 312.476 0
+glyph 747 322.752 0
+fragment 330.969 17 0 1
+glyph 4 0 0
+fragment 0 43 0 43
+glyph 92 0 0
+glyph 987 7.55798 0
+glyph 1107 9.76208 0
+glyph 1101 18.4594 0
+glyph 178 27.1566 0
+glyph 286 37.9091 0
+glyph 812 49.6146 0
+glyph 1054 62.4893 0
+glyph 1048 72.4375 0
+glyph 139 79.653 0
+glyph 4 88.7598 0
+glyph 1101 92.535 0
+glyph 747 101.232 0
+glyph 1072 109.58 0
+glyph 310 119.528 0
+glyph 4 128.523 0
+glyph 814 132.298 0
+glyph 663 140.936 0
+glyph 664 150.825 0
+glyph 775 160.713 0
+glyph 60 168.577 0
+glyph 721 177.944 0
+glyph 412 186.5 0
+glyph 189 198.257 0
+glyph 298 205.897 0
+glyph 1105 217.402 0
+glyph 1133 226.099 0
+glyph 345 235.534 0
+glyph 340 244.41 0
+glyph 80 255.981 0
+glyph 350 259.682 0
+glyph 295 267.783 0
+glyph 1114 267.783 0
+glyph 321 278.253 0
+glyph 1101 289.556 0
+glyph 244 298.254 0
+glyph 331 307.048 0
+glyph 776 317.406 0
+glyph 62 326.453 0
+glyph 232 335.582 0
+glyph 401 349.216 0
+glyph 135 363.826 0
+glyph 447 372.761 0
+fragment 385.781 43 0 1
+glyph 4 0 0
+fragment 0 68 0 15
+glyph 663 0 0
+glyph 1027 9.88867 0
+glyph 1059 23.7313 0
+glyph 213 32.0265 0
+glyph 258 48.4977 0
+glyph 4 56.8971 0
+glyph 352 60.6724 0
+glyph 225 73.2119 0
+glyph 965 83.6516 0
+glyph 997 92.4531 0
+glyph 979 103.325 0
+glyph 1068 116.534 0
+glyph 4 126.483 0
+glyph 1124 130.258 0
+glyph 341 140.147 0

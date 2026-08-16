@@ -5,9 +5,9 @@
 //! minimiser (`src/minimise.rs`) to check that a shrunk candidate still fails "the same
 //! way" as the case it was shrunk from.
 //!
-//! A [`FailureSignature`] keeps only the variant (`GlyphCount` vs `Glyphs`) and, for
-//! `Glyphs`, the `same_multiset` flag plus which axes drift — a handful of coarse
-//! buckets. It deliberately excludes fragile detail (diff counts, magnitudes, indices,
+//! A [`FailureSignature`] keeps only the variant (`GlyphCount`, `Fragmentation` or
+//! `Glyphs`) and, for `Glyphs`, the `same_multiset` flag plus which axes drift — a
+//! handful of coarse buckets. It deliberately excludes fragile detail (diff counts, magnitudes, indices,
 //! glyph ids): comparing on those would make minimisation slide from the bug it started
 //! shrinking into an unrelated one, or flip a `Glyphs` failure into `GlyphCount` via an
 //! incidental line-count change, rather than shrinking the original failure.
@@ -20,6 +20,13 @@ use crate::compare::Mismatch;
 pub enum FailureSignature {
     /// Parley and Chrome produced different numbers of glyphs.
     GlyphCount,
+    /// Parley and Chrome produced the same glyphs but split them into fragments
+    /// differently.
+    ///
+    /// Kept distinct from `Glyphs` because it is a structural disagreement about how
+    /// the line was divided, not a positioning one — letting minimisation slide between
+    /// the two would shrink one failure into a different bug.
+    Fragmentation,
     /// Parley and Chrome produced the same number of glyphs, but at least one pair
     /// disagreed.
     Glyphs {
@@ -39,22 +46,15 @@ impl FailureSignature {
     pub fn of(mismatch: &Mismatch) -> Self {
         match mismatch {
             Mismatch::GlyphCount { .. } => Self::GlyphCount,
+            Mismatch::Fragmentation { .. } => Self::Fragmentation,
             Mismatch::Glyphs {
                 diffs,
                 same_multiset,
                 ..
             } => Self::Glyphs {
                 same_multiset: *same_multiset,
-                // `dx`/`dy` are f64 (Parley accumulates x in f64; see the Phase 1 doc's
-                // "Parley must accumulate in f64"), while the tolerances are f32 — widen
-                // the tolerance rather than narrow the diff, so the comparison happens
-                // at the diff's own precision.
-                x_drift: diffs
-                    .iter()
-                    .any(|diff| diff.dx.abs() > f64::from(diff.x_tolerance)),
-                y_drift: diffs
-                    .iter()
-                    .any(|diff| diff.dy.abs() > f64::from(diff.y_tolerance)),
+                x_drift: diffs.iter().any(|diff| diff.dx.abs() > diff.x_tolerance),
+                y_drift: diffs.iter().any(|diff| diff.dy.abs() > diff.y_tolerance),
             },
         }
     }
@@ -66,6 +66,7 @@ impl std::fmt::Display for FailureSignature {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::GlyphCount => f.write_str("glyph-count"),
+            Self::Fragmentation => f.write_str("fragmentation"),
             Self::Glyphs {
                 same_multiset,
                 x_drift,
@@ -96,7 +97,7 @@ mod tests {
 
     /// Builds a `GlyphDiff` with the given `dx`/`dy`/tolerances; every other field is an
     /// arbitrary fixed value, since [`FailureSignature::of`] only looks at those four.
-    fn diff(dx: f64, dy: f64, x_tolerance: f32, y_tolerance: f32) -> GlyphDiff {
+    fn diff(dx: f64, dy: f64, x_tolerance: f64, y_tolerance: f64) -> GlyphDiff {
         let style = Style {
             postscript_name: "Roboto-Regular".to_string(),
             font_size: 16.0,
@@ -130,6 +131,19 @@ mod tests {
             FailureSignature::of(&mismatch),
             FailureSignature::GlyphCount,
             "a glyph-count mismatch must project to the GlyphCount signature"
+        );
+    }
+
+    #[test]
+    fn fragmentation_projects_to_fragmentation() {
+        let mismatch = Mismatch::Fragmentation {
+            parley: vec![5],
+            chrome: vec![2, 3],
+        };
+        assert_eq!(
+            FailureSignature::of(&mismatch),
+            FailureSignature::Fragmentation,
+            "a fragmentation mismatch must project to its own signature, not to Glyphs"
         );
     }
 
@@ -191,6 +205,7 @@ mod tests {
     fn display_has_no_whitespace() {
         let signatures = [
             FailureSignature::GlyphCount,
+            FailureSignature::Fragmentation,
             FailureSignature::Glyphs {
                 same_multiset: true,
                 x_drift: false,
@@ -214,6 +229,7 @@ mod tests {
     #[test]
     fn display_is_stable_and_distinct() {
         assert_eq!(FailureSignature::GlyphCount.to_string(), "glyph-count");
+        assert_eq!(FailureSignature::Fragmentation.to_string(), "fragmentation");
         assert_eq!(
             FailureSignature::Glyphs {
                 same_multiset: true,

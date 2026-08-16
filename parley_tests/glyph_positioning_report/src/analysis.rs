@@ -14,7 +14,7 @@ use std::ops::Range;
 use parley::{Layout, LayoutContext, PositionedLayoutItem};
 use parley_glyph_positioning_cases::{
     FONTS, FailureSignature, GlyphOutput, Golden, Mismatch, PositionedGlyph, compare,
-    half_ulp_6sig, x_matches, y_matches,
+    position_tolerance, x_matches, y_matches,
 };
 use parley_glyph_positioning_extract::{layout, parley_output};
 
@@ -75,9 +75,9 @@ pub(crate) struct GlyphRow {
     /// `parley.y - chrome.y`, when both sides have a glyph here.
     pub(crate) dy: Option<f64>,
     /// The half-ULP tolerance `dx` is judged against.
-    pub(crate) x_tolerance: f32,
+    pub(crate) x_tolerance: f64,
     /// The half-ULP tolerance `dy` is judged against.
-    pub(crate) y_tolerance: f32,
+    pub(crate) y_tolerance: f64,
     /// Whether this glyph agrees on id, style and both axes.
     pub(crate) matches: bool,
     /// Index into [`CaseReport::clusters`] of the Parley cluster owning this glyph.
@@ -127,7 +127,7 @@ impl CaseReport {
     pub(crate) fn build(golden: Golden, font_cx: &mut parley::FontContext) -> Self {
         let mut layout_cx = LayoutContext::new();
         let laid_out = layout(&golden.case, font_cx, &mut layout_cx);
-        let parley = parley_output(&laid_out);
+        let parley = parley_output(&laid_out, &golden.case);
         let text: String = golden
             .case
             .runs
@@ -140,10 +140,10 @@ impl CaseReport {
         let glyph_to_cluster = glyph_to_cluster(&clusters, &laid_out);
         let rows = rows(&parley, &golden.output, &glyph_to_cluster);
         for row in &rows {
-            if !row.matches {
-                if let Some(cluster) = row.cluster.and_then(|index| clusters.get_mut(index)) {
-                    cluster.mismatched = true;
-                }
+            if !row.matches
+                && let Some(cluster) = row.cluster.and_then(|index| clusters.get_mut(index))
+            {
+                cluster.mismatched = true;
             }
         }
         let chars = chars(&text, &golden, &clusters);
@@ -254,22 +254,41 @@ fn glyph_to_cluster(clusters: &[ClusterBox], laid_out: &Layout<()>) -> Vec<usize
 }
 
 /// Pairs the two sides' glyphs by emission index, exactly as `compare` does.
+///
+/// Tolerances come from the fragment origin each Chrome glyph was recorded against,
+/// not from its absolute position — see `position_tolerance`.
 fn rows(parley: &GlyphOutput, chrome: &GlyphOutput, glyph_to_cluster: &[usize]) -> Vec<GlyphRow> {
-    (0..parley.glyphs.len().max(chrome.glyphs.len()))
+    let parley_glyphs = parley.glyphs();
+    let chrome_glyphs = chrome.glyphs();
+    // The two parts skp_parser rounded independently, per glyph — the tolerance comes
+    // from both, never from their sum.
+    let chrome_recorded: Vec<(f64, f64, f32, f32)> = chrome
+        .fragments
+        .iter()
+        .flat_map(|fragment| {
+            fragment
+                .glyphs
+                .iter()
+                .map(move |glyph| (fragment.origin_x, fragment.origin_y, glyph.x, glyph.y))
+        })
+        .collect();
+
+    (0..parley_glyphs.len().max(chrome_glyphs.len()))
         .map(|index| {
-            let parley_glyph = parley.glyphs.get(index).copied();
-            let chrome_glyph = chrome.glyphs.get(index).copied();
-            let (dx, dy, matches) = match (parley_glyph, chrome_glyph) {
-                (Some(p), Some(c)) => {
+            let parley_glyph = parley_glyphs.get(index).copied();
+            let chrome_glyph = chrome_glyphs.get(index).copied();
+            let recorded = chrome_recorded.get(index).copied();
+            let (dx, dy, matches) = match (parley_glyph, chrome_glyph, recorded) {
+                (Some(p), Some(c), Some((origin_x, origin_y, offset_x, offset_y))) => {
                     let same_style = parley.styles.get(usize::from(p.style))
                         == chrome.styles.get(usize::from(c.style));
                     (
-                        Some(f64::from(p.x) - f64::from(c.x)),
-                        Some(f64::from(p.y) - f64::from(c.y)),
+                        Some(p.x - c.x),
+                        Some(p.y - c.y),
                         p.id == c.id
                             && same_style
-                            && x_matches(f64::from(p.x), c.x)
-                            && y_matches(p.y, c.y),
+                            && x_matches(p.x, origin_x, offset_x)
+                            && y_matches(p.y, origin_y, offset_y),
                     )
                 }
                 _ => (None, None, false),
@@ -280,8 +299,12 @@ fn rows(parley: &GlyphOutput, chrome: &GlyphOutput, glyph_to_cluster: &[usize]) 
                 chrome: chrome_glyph,
                 dx,
                 dy,
-                x_tolerance: chrome_glyph.map_or(0.0, |g| half_ulp_6sig(g.x)),
-                y_tolerance: chrome_glyph.map_or(0.0, |g| half_ulp_6sig(g.y)),
+                x_tolerance: recorded.map_or(0.0, |(origin_x, _, offset_x, _)| {
+                    position_tolerance(origin_x, offset_x)
+                }),
+                y_tolerance: recorded.map_or(0.0, |(_, origin_y, _, offset_y)| {
+                    position_tolerance(origin_y, offset_y)
+                }),
                 matches,
                 cluster: glyph_to_cluster.get(index).copied(),
             }
@@ -338,12 +361,17 @@ fn geometry(laid_out: &Layout<()>, parley: &GlyphOutput, chrome: &GlyphOutput) -
         .iter()
         .chain(&chrome.styles)
         .fold(0.0_f32, |acc, style| acc.max(style.font_size));
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "canvas sizing only; positions are f64 so summing an origin and an \
+                  offset does not re-round, which a pixel count does not care about"
+    )]
     let (max_x, max_y) = parley
-        .glyphs
+        .glyphs()
         .iter()
-        .chain(&chrome.glyphs)
+        .chain(&chrome.glyphs())
         .fold((0.0_f32, 0.0_f32), |(x, y), glyph| {
-            (x.max(glyph.x), y.max(glyph.y))
+            (x.max(glyph.x as f32), y.max(glyph.y as f32))
         });
     Geometry {
         width: (laid_out.width().max(max_x + max_size) + PADDING * 2.0).ceil(),

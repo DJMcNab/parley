@@ -287,7 +287,7 @@ until all are green.
 | B10 | Do combining marks produce `kFull`? | capture a case containing an `Mn` mark | either answer is fine | **check the JSON in as a fixture either way** — this replaces guessing at `kFull`'s shape |
 | B11 | Is `textSize` omitted at exactly 12px? | capture a run at 12.0px | omitted | check the JSON in as a fixture regardless |
 | B12 | Which 16.16 formula does Blink use? | see the [16.16 doc](./glyph-positioning-16-16-advances.md) | — | if inconclusive, restore the drift term and its line plumbing as the documented fallback |
-| B13 | Does Blink round fragment origins to 1/64px? | after B12 lands: a case with several differently-sized runs, at sizes where one font unit is **not** a multiple of 1/64, and check whether residual error steps at `DrawTextBlob` boundaries | no residual | model it (`floor_to_layout_unit` already exists, unused, in the cases crate) — but note Parley's run boundaries need not coincide with Blink's blob boundaries, so this needs evidence before it is implemented |
+| B13 (**done** — see [`glyph-positioning-fragment-snapping.md`](./glyph-positioning-fragment-snapping.md)) | Does Blink round fragment origins to 1/64px? | after B12 lands: a case with several differently-sized runs, at sizes where one font unit is **not** a multiple of 1/64, and check whether residual error steps at `DrawTextBlob` boundaries | no residual | model it (`floor_to_layout_unit` already exists, unused, in the cases crate) — but note Parley's run boundaries need not coincide with Blink's blob boundaries, so this needs evidence before it is implemented |
 
 B13 exists because removing the accumulation term exposes whatever the next
 error source is, and `LayoutUnit`'s 1/64px grid is ~500× coarser than 16.16.
@@ -503,7 +503,7 @@ case can say why it exists; the format has no comments.
 One uniform rule: **every existing file under
 `parley_tests/tests/glyph_positioning/**/*.txt` has its `Case` re-recorded in
 place**, preserving `seed` and `note`. Handwritten cases are therefore authored
-by hand with `styles 0` / `glyphs 0` and filled in by the first run; promoted
+by hand with `styles 0` / `fragments 0` and filled in by the first run; promoted
 fuzz regressions already arrive in exactly that shape.
 
 The one addition on top of that rule: `generated/` is also populated from

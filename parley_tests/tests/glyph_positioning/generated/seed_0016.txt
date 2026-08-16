@@ -1,0 +1,56 @@
+seed 16
+note was in known_failing/ as a decomposition-cluster-bug repro; it was in fact Blink's fragment-origin snapping at a wrapped line's hanging trailing whitespace, and passes now that that is modelled
+width 157.64063
+runs 1
+run 15.25 0 0 14.640625
+"PÈ ӎ ĈұӨЃǼ ų ц½|Ŝ Ẽ»ҝ Ҕд ЉҠū ҏẺıÚ ”Ҷ¶юҹåḁ
+styles 1
+style 15.25 Roboto-Regular
+fragments 5
+fragment 0 12 0 18
+glyph 6 0 0
+glyph 52 4.87732 0
+glyph 647 14.4979 0
+glyph 4 23.1654 0
+glyph 343 26.9407 0
+glyph 4 38.8398 0
+glyph 702 42.6151 0
+glyph 1159 52.541 0
+glyph 1037 60.1809 0
+glyph 942 70.5536 0
+glyph 811 79.0349 0
+glyph 4 93.2871 0
+glyph 799 97.0624 0
+glyph 4 105.469 0
+glyph 248 109.245 0
+glyph 126 118.277 0
+glyph 96 130.109 0
+glyph 774 133.825 0
+fragment 142.875 12 0 1
+glyph 4 0 0
+fragment 0 27 0 15
+glyph 1082 0 0
+glyph 124 8.66748 0
+glyph 312 15.8159 0
+glyph 4 24.3792 0
+glyph 305 28.1544 0
+glyph 237 37.4102 0
+glyph 4 46.6138 0
+glyph 212 50.389 0
+glyph 313 64.7306 0
+glyph 791 77.2106 0
+glyph 4 85.6174 0
+glyph 302 89.3927 0
+glyph 1080 98.0378 0
+glyph 141 106.705 0
+glyph 662 110.473 0
+fragment 120.375 27 0 1
+glyph 4 0 0
+fragment 0 41 0 7
+glyph 393 0 0
+glyph 327 5.44324 0
+glyph 119 16.3744 0
+glyph 256 23.8281 0
+glyph 330 36.2709 0
+glyph 671 44.6852 0
+glyph 995 52.9803 0

@@ -1,0 +1,62 @@
+seed 303
+note known issue: Chrome hung this final line's trailing whitespace as a fragment of its own where the model did not. The model only hangs when the break splits a span, which was measured from a case where the break landed on a span boundary mid-text; here the break is at the end of the text, where Chrome hangs anyway. The rule needs a controlled experiment separating the two, not a guess
+width 290.90625
+runs 3
+run 28 0 0 25.0625
+ŰӸẀl Ӳ ŵ ‗ Ѭ
+run 19.75 0 0 30.890625
+�ıэ Ńȷ ӕӼứĞǺ
+run 28.5 0 0 23.671875
+Ś KẬ̉ӅЏėξĺīЬả²}Ą 
+styles 3
+style 28 Roboto-Regular
+style 19.75 Roboto-Regular
+style 28.5 Roboto-Regular
+fragments 6
+fragment 0 22 0 12
+glyph 796 0 0
+glyph 1051 18.1562 0
+glyph 979 42.3691 0
+glyph 80 67.2109 0
+glyph 4 74.0059 0
+glyph 1047 80.9375 0
+glyph 4 98.5332 0
+glyph 801 105.465 0
+glyph 4 126.506 0
+glyph 387 133.438 0
+glyph 4 146.193 0
+glyph 275 153.125 0
+fragment 184.688 22 1 6
+glyph 452 0 0
+glyph 141 20.2611 0
+glyph 255 25.1407 0
+glyph 4 35.7583 0
+glyph 753 40.6476 0
+glyph 156 54.7272 0
+fragment 244.391 22 1 1
+glyph 4 0 0
+fragment 0 53 1 5
+glyph 1021 0 0
+glyph 349 16.6737 0
+glyph 1127 29.4611 0
+glyph 722 41.6794 0
+glyph 645 55.1322 0
+fragment 68.0312 53 2 16
+glyph 772 0 0
+glyph 4 16.908 0
+glyph 47 23.9634 0
+glyph 1066 41.8315 0
+glyph 171 60.4233 0
+glyph 336 60.4233 0
+glyph 215 81.7705 0
+glyph 715 102.088 0
+glyph 197 117.187 0
+glyph 746 131.158 0
+glyph 733 138.075 0
+glyph 230 145.116 0
+glyph 1057 162.998 0
+glyph 115 178.501 0
+glyph 97 188.952 0
+glyph 698 198.595 0
+fragment 285.219 53 2 1
+glyph 4 0 0

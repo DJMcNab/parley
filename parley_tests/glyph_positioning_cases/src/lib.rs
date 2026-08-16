@@ -24,14 +24,16 @@ mod signature;
 mod typeface;
 
 pub use chromium_quantization::{
-    LAYOUT_UNIT_STEPS_PER_PX, MAX_ADVANCE_EPSILON, SPACING_GRID_STEPS_PER_PX, floor_to_layout_unit,
-    half_ulp_6sig, quantize_font_size, x_matches, y_matches,
+    LAYOUT_UNIT_STEPS_PER_PX, MAX_ADVANCE_EPSILON, SPACING_GRID_STEPS_PER_PX, ceil_to_layout_unit,
+    floor_to_layout_unit, half_ulp_6sig, position_tolerance, quantize_font_size, x_matches,
+    y_matches,
 };
 pub use compare::{GlyphDiff, Mismatch, compare};
 pub use freetype_hack::hack_would_fire;
 pub use generate::{Case, MAX_CASE_WIDTH_PX, Run, alphabet, valid_font_size};
 pub use glyph_output::{
-    GlyphOutput, GlyphOutputBuilder, Golden, ParseGoldenError, PositionedGlyph, Style,
+    Fragment, GlyphOutput, GlyphOutputBuilder, Golden, LocalGlyph, ParseGoldenError,
+    PositionedGlyph, Style,
 };
 pub use harness_css::{container_css, run_css};
 pub use minimise::{

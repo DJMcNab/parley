@@ -69,22 +69,42 @@ pub struct Capture {
     /// A capture referencing two or more is a font fallback and is refused, so this is
     /// always exactly one key.
     pub typeface_key: String,
-    /// The captured glyphs, in emission order: command order, then run order, then
-    /// index within the run.
+    /// The captured fragments, in emission order: command order, then run order.
+    ///
+    /// One `DrawTextBlob` run is one fragment — the unit Blink positioned as a whole,
+    /// and the unit whose origin it snapped onto `LayoutUnit`'s 1/64 px grid. Keeping
+    /// the blob origin and the per-glyph offsets apart, rather than summing them here,
+    /// is what lets the comparison compute a serialisation floor from the two numbers
+    /// `skp_parser` actually rounded.
+    pub fragments: Vec<CapturedFragment>,
+}
+
+/// One `DrawTextBlob` run: an origin, a font size, and glyphs positioned relative to
+/// that origin.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CapturedFragment {
+    /// The blob's `x`, in CSS px. Kept in f64, as `skp_parser` wrote it: this is what
+    /// glyph offsets are measured from, and narrowing it would cost half an f32 ULP on
+    /// every glyph in the fragment.
+    pub origin_x: f64,
+    /// The blob's `y`, in CSS px. f64 for the same reason as [`Self::origin_x`].
+    pub origin_y: f64,
+    /// The run's font size, in CSS px.
+    pub font_size: f32,
+    /// The run's glyphs, at offsets from `(origin_x, origin_y)`.
     pub glyphs: Vec<CapturedGlyph>,
 }
 
-/// A single glyph read out of a `DrawTextBlob`, at its absolute document position.
+/// A single glyph read out of a `DrawTextBlob`, positioned relative to its run's
+/// origin.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CapturedGlyph {
     /// The glyph ID, in the run's typeface.
     pub id: u32,
-    /// Absolute x position, in CSS px.
+    /// Offset from [`CapturedFragment::origin_x`], in CSS px.
     pub x: f32,
-    /// Absolute y position, in CSS px.
+    /// Offset from [`CapturedFragment::origin_y`], in CSS px.
     pub y: f32,
-    /// The run's font size, in CSS px.
-    pub font_size: f32,
 }
 
 impl Capture {
@@ -96,7 +116,7 @@ impl Capture {
             serde_json::from_str(field(&dump, "commands", "the dump")?.get())
                 .map_err(|error| format!("the dump's `commands` is not an array: {error}"))?;
 
-        let mut glyphs = Vec::new();
+        let mut fragments = Vec::new();
         // Distinct `data/N` keys in first-appearance order; more than one means a font
         // fallback happened, which v1 has no way to model.
         let mut typeface_keys: Vec<String> = Vec::new();
@@ -107,7 +127,7 @@ impl Capture {
             let tag = string_field(&command, "command", &what)?;
             match tag.as_str() {
                 "DrawTextBlob" => {
-                    read_text_blob(&command, &what, &mut glyphs, &mut typeface_keys)?;
+                    read_text_blob(&command, &what, &mut fragments, &mut typeface_keys)?;
                 }
                 tag if IGNORED_COMMANDS.contains(&tag) => {}
                 tag => {
@@ -127,7 +147,7 @@ impl Capture {
         match typeface_keys.len() {
             1 => Ok(Self {
                 typeface_key: typeface_keys.remove(0),
-                glyphs,
+                fragments,
             }),
             0 => Err("the dump contains no `DrawTextBlob` runs, so nothing was captured".into()),
             _ => Err(format!(
@@ -148,14 +168,38 @@ impl Capture {
     #[must_use]
     pub fn into_output(self, postscript_name: &str) -> GlyphOutput {
         let mut builder = GlyphOutputBuilder::default();
-        for glyph in self.glyphs {
+        for fragment in self.fragments {
             let style = builder.style_index(Style {
                 postscript_name: postscript_name.to_string(),
-                font_size: glyph.font_size,
+                font_size: fragment.font_size,
             });
-            builder.push_glyph(glyph.id, glyph.x, glyph.y, style);
+            builder.begin_fragment(fragment.origin_x, fragment.origin_y, style);
+            for glyph in fragment.glyphs {
+                builder.push_glyph(glyph.id, glyph.x, glyph.y);
+            }
         }
         builder.build()
+    }
+
+    /// Every fragment's glyphs at absolute document positions, in emission order.
+    ///
+    /// The stored form keeps origins and offsets apart (see [`Self::fragments`]); this
+    /// is the flat view, for tests and diagnostics that only care where a glyph landed.
+    #[must_use]
+    pub fn absolute_glyphs(&self) -> Vec<(u32, f64, f64, f32)> {
+        self.fragments
+            .iter()
+            .flat_map(|fragment| {
+                fragment.glyphs.iter().map(move |glyph| {
+                    (
+                        glyph.id,
+                        fragment.origin_x + f64::from(glyph.x),
+                        fragment.origin_y + f64::from(glyph.y),
+                        fragment.font_size,
+                    )
+                })
+            })
+            .collect()
     }
 }
 
@@ -164,7 +208,7 @@ impl Capture {
 fn read_text_blob(
     blob: &Object,
     what: &str,
-    glyphs: &mut Vec<CapturedGlyph>,
+    fragments: &mut Vec<CapturedFragment>,
     typeface_keys: &mut Vec<String>,
 ) -> Result<()> {
     // Absence means visible; we only know what `true` means, so `false` is refused
@@ -194,7 +238,7 @@ fn read_text_blob(
             &what,
             blob_x,
             blob_y,
-            glyphs,
+            fragments,
             typeface_keys,
         )?;
     }
@@ -207,7 +251,7 @@ fn read_run(
     what: &str,
     blob_x: f64,
     blob_y: f64,
-    glyphs: &mut Vec<CapturedGlyph>,
+    fragments: &mut Vec<CapturedFragment>,
     typeface_keys: &mut Vec<String>,
 ) -> Result<()> {
     let font = object(field(run, "font", what)?, what)?;
@@ -239,9 +283,7 @@ fn read_run(
         if let Ok(flat) = serde_json::from_str::<Vec<f64>>(positions.get()) {
             let coords: [f64; 2] = serde_json::from_str(field(run, "coords", what)?.get())
                 .map_err(|error| format!("{what}: `coords` is not a 2-element array: {error}"))?;
-            flat.into_iter()
-                .map(|x| (blob_x + x, blob_y + coords[1]))
-                .collect()
+            flat.into_iter().map(|x| (x, coords[1])).collect()
         } else {
             let full: Vec<[f64; 2]> = serde_json::from_str(positions.get()).map_err(|error| {
                 format!(
@@ -250,7 +292,7 @@ fn read_run(
                 )
             })?;
             full.into_iter()
-                .map(|position| (blob_x + position[0], blob_y + position[1]))
+                .map(|position| (position[0], position[1]))
                 .collect()
         };
 
@@ -263,20 +305,25 @@ fn read_run(
         .into());
     }
 
-    glyphs.extend(ids.into_iter().zip(positions).map(|(id, (x, y))| {
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "`skp_parser` emits at most 6 significant figures, so nothing survives in \
-                      f64 that f32 cannot hold; f64 is only used so the blob origin and the \
-                      per-glyph offset are summed before narrowing"
-        )]
-        CapturedGlyph {
-            id,
-            x: x as f32,
-            y: y as f32,
-            font_size: font_size as f32,
-        }
-    }));
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "`skp_parser` emits at most 6 significant figures, so nothing it writes \
+                  survives in f64 that f32 cannot hold"
+    )]
+    fragments.push(CapturedFragment {
+        origin_x: blob_x,
+        origin_y: blob_y,
+        font_size: font_size as f32,
+        glyphs: ids
+            .into_iter()
+            .zip(positions)
+            .map(|(id, (x, y))| CapturedGlyph {
+                id,
+                x: x as f32,
+                y: y as f32,
+            })
+            .collect(),
+    });
     Ok(())
 }
 
@@ -354,13 +401,37 @@ mod tests {
     }
 
     #[test]
-    fn real_capture_glyph_positions() {
+    fn real_capture_fragments_and_positions() {
         let capture = parse_ok(PHASE0_LAYER_0);
         assert_eq!(capture.typeface_key, "data/0");
-        // Four `DrawTextBlob`s of 16, 10, 1 and 5 glyphs.
-        assert_eq!(capture.glyphs.len(), 32);
+        // Four `DrawTextBlob`s, i.e. four fragments, of 16, 10, 1 and 5 glyphs. The
+        // shape is part of the contract: one blob run is one unit Blink positioned as a
+        // whole, and the comparison checks that shape before it looks at any position.
+        let shape: Vec<_> = capture
+            .fragments
+            .iter()
+            .map(|fragment| {
+                (
+                    fragment.origin_x,
+                    fragment.origin_y,
+                    fragment.font_size,
+                    fragment.glyphs.len(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            shape,
+            vec![
+                (0.0, 22.0, 24.0, 16),
+                (192.609, 22.0, 13.37, 10),
+                (273.656, 22.0, 13.37, 1),
+                (0.0, 43.0, 13.37, 5),
+            ]
+        );
 
-        // Blob 1: origin (0, 22), 24px, 16 glyphs, kHorizontal with `coords: [0, 0]`.
+        // Offsets are stored relative to the fragment origin, never summed into it —
+        // `skp_parser` rounded the two numbers separately, and the comparison needs
+        // both to work out how far apart the two sides are allowed to be.
         let expected_first = [
             (44_u32, 0.0_f32),
             (73, 17.1094),
@@ -379,21 +450,12 @@ mod tests {
             (80, 173.238),
             (72, 179.062),
         ];
-        for (glyph, (id, x)) in capture.glyphs[..16].iter().zip(expected_first) {
-            assert_eq!(
-                *glyph,
-                CapturedGlyph {
-                    id,
-                    x,
-                    y: 22.0,
-                    font_size: 24.0
-                }
-            );
+        for (glyph, (id, x)) in capture.fragments[0].glyphs.iter().zip(expected_first) {
+            assert_eq!(*glyph, CapturedGlyph { id, x, y: 0.0 });
         }
 
-        // Blob 2: origin (192.609, 22), 13.37px, 10 glyphs.
         let expected_second = [
-            (87_u32, 0.0_f64),
+            (87_u32, 0.0_f32),
             (73, 8.38843),
             (71, 16.966),
             (83, 25.4588),
@@ -404,37 +466,19 @@ mod tests {
             (89, 63.311),
             (82, 72.1756),
         ];
-        for (glyph, (id, offset)) in capture.glyphs[16..26].iter().zip(expected_second) {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "mirrors the parser: the blob origin and the per-glyph offset are \
-                          summed in f64 and narrowed once, so the expected value has to be \
-                          computed the same way to be bit-identical"
-            )]
-            let x = (192.609_f64 + offset) as f32;
-            assert_eq!(
-                *glyph,
-                CapturedGlyph {
-                    id,
-                    x,
-                    y: 22.0,
-                    font_size: 13.37
-                }
-            );
+        for (glyph, (id, x)) in capture.fragments[1].glyphs.iter().zip(expected_second) {
+            assert_eq!(*glyph, CapturedGlyph { id, x, y: 0.0 });
         }
 
-        // Blob 3: origin (273.656, 22), 13.37px, a single glyph at offset 0.
         assert_eq!(
-            capture.glyphs[26],
-            CapturedGlyph {
+            capture.fragments[2].glyphs,
+            vec![CapturedGlyph {
                 id: 4,
-                x: 273.656,
-                y: 22.0,
-                font_size: 13.37
-            }
+                x: 0.0,
+                y: 0.0
+            }]
         );
 
-        // Blob 4: origin (0, 43) — the second line — 13.37px, 5 glyphs.
         let expected_fourth = [
             (88_u32, 0.0_f32),
             (83, 5.73341),
@@ -442,17 +486,23 @@ mod tests {
             (89, 20.9904),
             (35, 29.855),
         ];
-        for (glyph, (id, x)) in capture.glyphs[27..].iter().zip(expected_fourth) {
-            assert_eq!(
-                *glyph,
-                CapturedGlyph {
-                    id,
-                    x,
-                    y: 43.0,
-                    font_size: 13.37
-                }
-            );
+        for (glyph, (id, x)) in capture.fragments[3].glyphs.iter().zip(expected_fourth) {
+            assert_eq!(*glyph, CapturedGlyph { id, x, y: 0.0 });
         }
+
+        // And the flat view sums the two, so a fragment's second glyph lands where the
+        // whole document says it does.
+        let absolute = capture.absolute_glyphs();
+        assert_eq!(absolute.len(), 32);
+        assert_eq!(absolute[0], (44, 0.0, 22.0, 24.0));
+        // Widened the same way the flat view builds it: the origin is f64 as recorded,
+        // the offset is f32, so the expectation has to narrow the offset too.
+        assert_eq!(
+            absolute[17],
+            (73, 192.609 + f64::from(8.38843_f32), 22.0, 13.37)
+        );
+        assert_eq!(absolute[26], (4, 273.656, 22.0, 13.37));
+        assert_eq!(absolute[27], (88, 0.0, 43.0, 13.37));
     }
 
     #[test]
@@ -473,13 +523,15 @@ mod tests {
                 },
             ]
         );
-        assert_eq!(output.glyphs.len(), 32);
-        for glyph in &output.glyphs[..16] {
-            assert_eq!(glyph.style, 0);
-        }
-        for glyph in &output.glyphs[16..] {
-            assert_eq!(glyph.style, 1);
-        }
+        assert_eq!(output.glyph_count(), 32);
+        // The four blobs survive as four fragments, and each carries its own style.
+        assert_eq!(output.shape(), vec![16, 10, 1, 5]);
+        let styles: Vec<_> = output
+            .fragments
+            .iter()
+            .map(|fragment| fragment.style)
+            .collect();
+        assert_eq!(styles, vec![0, 1, 1, 1]);
     }
 
     #[test]
@@ -533,21 +585,8 @@ mod tests {
             "../tests/fixtures/provisional_full_positioning.json"
         ));
         assert_eq!(
-            capture.glyphs,
-            vec![
-                CapturedGlyph {
-                    id: 44,
-                    x: 10.0,
-                    y: 50.0,
-                    font_size: 18.5
-                },
-                CapturedGlyph {
-                    id: 780,
-                    x: 18.5,
-                    y: 46.75,
-                    font_size: 18.5
-                },
-            ]
+            capture.absolute_glyphs(),
+            vec![(44, 10.0, 50.0, 18.5), (780, 18.5, 46.75, 18.5),]
         );
     }
 
@@ -575,23 +614,19 @@ mod tests {
             (79, 39.7676),
             (172, 50.918),
         ];
+        let absolute = capture.absolute_glyphs();
         assert_eq!(
-            capture.glyphs,
+            absolute,
             expected
+                // One shared `y` for every glyph: that is what kHorizontal means.
                 .iter()
-                .map(|&(id, x)| CapturedGlyph {
-                    id,
-                    x,
-                    // One shared `y` for every glyph: that is what kHorizontal means.
-                    y: 20.0,
-                    font_size: 22.0,
-                })
+                .map(|&(id, x)| (id, f64::from(x), 20.0_f64, 22.0_f32))
                 .collect::<Vec<_>>()
         );
 
-        let (base, mark) = (capture.glyphs[2], capture.glyphs[3]);
+        let (base, mark) = (absolute[2], absolute[3]);
         assert_eq!(
-            mark.x, base.x,
+            mark.1, base.1,
             "the standalone combining mark must have zero advance, i.e. sit at its base's x"
         );
     }
@@ -628,15 +663,10 @@ mod tests {
             (87, 62.0156),
         ];
         assert_eq!(
-            capture.glyphs,
+            capture.absolute_glyphs(),
             expected
                 .iter()
-                .map(|&(id, x)| CapturedGlyph {
-                    id,
-                    x,
-                    y: 11.0,
-                    font_size: 12.0,
-                })
+                .map(|&(id, x)| (id, f64::from(x), 11.0_f64, 12.0_f32))
                 .collect::<Vec<_>>()
         );
 

@@ -1,0 +1,108 @@
+seed 0
+note was in known_failing/ as a decomposition-cluster-bug repro; it was in fact Blink's fragment-origin snapping at a wrapped line's hanging trailing whitespace, and passes now that that is modelled
+width 463.46875
+runs 1
+run 23 0 0 32.90625
+ҎП Σ ӌҁỸҚ |∏ÏҦ§¿ЖỰĖGqӄZǰΘF΄̃Ѳ п₹ẁə G›ҍôNʼ–ЉԍИ ơrỞĢÜР˘Ά ұĸġХҵ₼ gÊÐѓẳѺ)ỠÑ Ẵ£ ӌ»șÉŗỸ ĬÅıҾỳ ҞΪǰ ҜỌ
+styles 1
+style 23 Roboto-Regular
+fragments 5
+fragment 0 23 0 34
+glyph 301 0 0
+glyph 958 14.6782 0
+glyph 4 31.0859 0
+glyph 183 36.7798 0
+glyph 4 49.9082 0
+glyph 1146 55.6021 0
+glyph 290 68.1016 0
+glyph 1140 80.3989 0
+glyph 309 94.2124 0
+glyph 4 110.317 0
+glyph 96 116.011 0
+glyph 429 121.615 0
+glyph 654 137.584 0
+glyph 319 143.84 0
+glyph 105 167.39 0
+glyph 128 181.496 0
+glyph 218 192.378 0
+glyph 1134 213.255 0
+glyph 714 229.248 0
+glyph 43 242.32 0
+glyph 85 257.986 0
+glyph 335 271.059 0
+glyph 62 283.569 0
+glyph 990 297.338 0
+glyph 179 303.122 0
+glyph 42 318.766 0
+glyph 174 331.479 0
+glyph 170 337.375 0
+glyph 279 337.375 0
+glyph 4 353.019 0
+glyph 245 358.712 0
+glyph 415 371.987 0
+glyph 980 383.869 0
+glyph 157 401.152 0
+fragment 413.281 23 0 1
+glyph 4 0 0
+fragment 0 56 0 36
+glyph 43 0 0
+glyph 403 15.6665 0
+glyph 300 22.562 0
+glyph 685 35.0278 0
+glyph 50 48.145 0
+glyph 991 64.5415 0
+glyph 385 69.1348 0
+glyph 212 84.2285 0
+glyph 363 108.857 0
+glyph 220 120.683 0
+glyph 4 137.079 0
+glyph 153 142.773 0
+glyph 86 155.913 0
+glyph 1116 163.695 0
+glyph 726 179.485 0
+glyph 664 195.152 0
+glyph 959 210.066 0
+glyph 161 224.576 0
+glyph 902 234.391 0
+glyph 4 249.395 0
+glyph 1159 255.089 0
+glyph 142 266.611 0
+glyph 725 279.403 0
+glyph 962 292.307 0
+glyph 326 306.727 0
+glyph 417 322.135 0
+glyph 4 337.318 0
+glyph 75 343.012 0
+glyph 649 355.916 0
+glyph 635 368.988 0
+glyph 972 384.408 0
+glyph 1073 394.055 0
+glyph 283 406.565 0
+glyph 13 422.209 0
+glyph 1118 430.206 0
+glyph 655 445.996 0
+fragment 462.406 56 0 1
+glyph 4 0 0
+fragment 0 89 0 22
+glyph 1074 0 0
+glyph 101 15.0039 0
+glyph 4 28.3682 0
+glyph 1146 34.062 0
+glyph 124 46.5615 0
+glyph 779 57.3428 0
+glyph 648 69.2021 0
+glyph 769 82.2744 0
+glyph 1140 90.0571 0
+glyph 4 103.871 0
+glyph 734 109.564 0
+glyph 644 116.022 0
+glyph 141 131.026 0
+glyph 1149 136.708 0
+glyph 986 154.486 0
+glyph 4 165.369 0
+glyph 1156 171.062 0
+glyph 924 186.066 0
+glyph 990 192.322 0
+glyph 4 198.105 0
+glyph 311 203.799 0
+glyph 1098 218.275 0

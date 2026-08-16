@@ -1,0 +1,93 @@
+seed 300
+width 695.4844
+runs 2
+run 28.25 0 0 25.203125
+‹Ӿ Š0Ẅ ТẶŐὍỲ ̀ íỶѣԐ∞ Ẻ Ҙ ŘoзҾ Ú≤ỉ
+run 27.75 0 0 37.890625
+Ԉ Äт¡±j ÑǼ Ҟ R$ҿ‥‛ҸҁДІn∫ԂỄѲĠӥờӭếŉ#=Γӿt fӡŵаК₱
+styles 2
+style 28.25 Roboto-Regular
+style 27.75 Roboto-Regular
+fragments 4
+fragment 0 28 0 33
+glyph 402 0 0
+glyph 1160 8.46948 0
+glyph 4 26.1809 0
+glyph 780 33.1744 0
+glyph 20 49.9341 0
+glyph 983 65.7971 0
+glyph 4 90.8607 0
+glyph 961 97.8542 0
+glyph 1076 114.71 0
+glyph 764 132.987 0
+glyph 1226 152.409 0
+glyph 985 172.797 0
+glyph 4 189.763 0
+glyph 168 196.757 0
+glyph 4 196.757 0
+glyph 679 203.75 0
+glyph 1138 210.73 0
+glyph 266 227.697 0
+glyph 366 243.008 0
+glyph 433 262.044 0
+glyph 4 291.094 0
+glyph 1080 298.087 0
+glyph 4 314.143 0
+glyph 1006 321.137 0
+glyph 4 337.896 0
+glyph 770 344.89 0
+glyph 83 362.284 0
+glyph 239 378.396 0
+glyph 1149 392.741 0
+glyph 4 414.577 0
+glyph 662 421.571 0
+glyph 437 439.889 0
+glyph 1095 454.248 0
+fragment 461.234 28 1 12
+glyph 358 0 0
+glyph 4 26.8964 0
+glyph 643 33.7661 0
+glyph 246 51.8687 0
+glyph 99 65.2017 0
+glyph 114 71.963 0
+glyph 78 86.7865 0
+glyph 4 93.4124 0
+glyph 655 100.282 0
+glyph 811 120.065 0
+glyph 4 145.999 0
+glyph 1156 152.869 0
+fragment 632.219 28 1 1
+glyph 4 0 0
+fragment 0 66 1 32
+glyph 54 0 0
+glyph 8 17.0863 0
+glyph 1150 32.6686 0
+glyph 398 49.1045 0
+glyph 391 59.863 0
+glyph 329 65.4049 0
+glyph 290 84.2527 0
+glyph 217 99.0897 0
+glyph 944 119.956 0
+glyph 82 127.504 0
+glyph 434 142.815 0
+glyph 352 149.915 0
+glyph 1090 172.733 0
+glyph 279 188.505 0
+glyph 724 207.38 0
+glyph 1034 226.282 0
+glyph 1115 242.298 0
+glyph 1042 258.151 0
+glyph 1085 273.069 0
+glyph 759 287.771 0
+glyph 7 303.082 0
+glyph 33 320.168 0
+glyph 177 335.398 0
+glyph 1161 350.832 0
+glyph 88 364.585 0
+glyph 4 373.649 0
+glyph 74 380.519 0
+glyph 346 390.153 0
+glyph 801 406.304 0
+glyph 963 427.158 0
+glyph 947 442.252 0
+glyph 414 460.084 0

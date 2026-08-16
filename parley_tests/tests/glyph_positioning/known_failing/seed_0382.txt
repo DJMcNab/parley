@@ -1,0 +1,99 @@
+seed 382
+note known issue: baseline divergence — every glyph from the second line on sits exactly 1px lower in Parley than in Chrome. An x-axis-only harness would call this case clean; the y axis is what fails
+width 415.39063
+runs 4
+run 24.5 0 0 21.296875
+Î™śsẁ₪ĝ℮ŰΉӮљæΥүø Ι ҂Н$ỷ
+run 10.5 0 0 10.984375
+ÝỐỗӋԄĄӘŇV ӵŦ
+run 24 0 0 21.171875
+āÄӭ ˆѓп₽‹ ǺѓҮ ыӹΘҙӒΆ¥ ὍÏĮ 
+run 11.75 0 0 20.953125
+z ŕΡL∏ÕpÅѝảӸ ₱
+styles 4
+style 24.5 Roboto-Regular
+style 10.5 Roboto-Regular
+style 24 Roboto-Regular
+style 11.75 Roboto-Regular
+fragments 6
+fragment 0 19 0 23
+glyph 653 0 0
+glyph 422 6.66333 0
+glyph 773 21.9878 0
+glyph 87 34.6206 0
+glyph 980 47.2534 0
+glyph 412 65.6643 0
+glyph 721 84.5537 0
+glyph 423 98.2991 0
+glyph 796 113.887 0
+glyph 904 129.773 0
+glyph 1043 147.239 0
+glyph 260 161.81 0
+glyph 134 182.59 0
+glyph 922 203.273 0
+glyph 1011 217.988 0
+glyph 137 230.262 0
+glyph 4 244.139 0
+glyph 915 250.204 0
+glyph 4 256.867 0
+glyph 291 262.932 0
+glyph 956 278.209 0
+glyph 8 295.675 0
+glyph 1139 309.432 0
+fragment 321.031 19 1 9
+glyph 665 0 0
+glyph 1102 6.15747 0
+glyph 1109 13.3762 0
+glyph 1145 19.3645 0
+glyph 354 26.5525 0
+glyph 698 34.8684 0
+glyph 344 41.718 0
+glyph 757 48.9727 0
+glyph 58 56.458 0
+fragment 384.172 19 1 1
+glyph 4 0 0
+fragment 0 39 1 2
+glyph 1050 0 0
+glyph 637 5.7063 0
+fragment 11.9844 39 2 26
+glyph 695 0 0
+glyph 643 13.0547 0
+glyph 1042 28.7109 0
+glyph 4 41.6133 0
+glyph 158 47.5547 0
+glyph 972 58.8516 0
+glyph 245 68.918 0
+glyph 418 82.7695 0
+glyph 402 98.6953 0
+glyph 4 105.891 0
+glyph 645 111.832 0
+glyph 972 127.488 0
+glyph 1010 137.555 0
+glyph 4 151.969 0
+glyph 253 157.91 0
+glyph 1052 176.543 0
+glyph 179 195.176 0
+glyph 1007 211.5 0
+glyph 1018 223.688 0
+glyph 902 239.344 0
+glyph 103 255 0
+glyph 4 267.598 0
+glyph 1226 273.539 0
+glyph 654 290.859 0
+glyph 736 297.387 0
+glyph 4 303.914 0
+fragment 321.844 39 3 14
+glyph 94 0 0
+glyph 4 5.82336 0
+glyph 767 8.73218 0
+glyph 920 12.7081 0
+glyph 48 20.1207 0
+glyph 429 26.4432 0
+glyph 659 34.6017 0
+glyph 84 42.6798 0
+glyph 644 49.272 0
+glyph 999 56.937 0
+glyph 1057 63.7185 0
+glyph 1051 70.1099 0
+glyph 4 80.2706 0
+glyph 414 83.1794 0

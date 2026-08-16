@@ -1,0 +1,102 @@
+seed 3
+note was in known_failing/ as a decomposition-cluster-bug repro; it was in fact Blink's fragment-origin snapping at a wrapped line's hanging trailing whitespace, and passes now that that is modelled
+width 267.1875
+runs 1
+run 19.5 0 0 21.859375
+, ⁿŶÑĥẬӓễΤԊή ¿~ậḾ̃ћÓŗĂĲ ỡΡõŇd *R} `ố ķԐ ïå˛Ԓu #₦ į Đ ßӏОӫẂӞΎ ỹ#ŉe ~Ӎ ӒЍ ҽ(Țl̀Ô γỪẹўÕ₨⁄
+styles 1
+style 19.5 Roboto-Regular
+fragments 7
+fragment 0 17 0 23
+glyph 16 0 0
+glyph 4 3.82764 0
+glyph 406 8.65503 0
+glyph 802 16.8816 0
+glyph 655 28.593 0
+glyph 729 42.4944 0
+glyph 1066 53.2346 0
+glyph 1019 65.9553 0
+glyph 1091 76.5623 0
+glyph 921 86.8931 0
+glyph 360 98.5283 0
+glyph 928 117.981 0
+glyph 4 129.026 0
+glyph 128 133.853 0
+glyph 98 143.079 0
+glyph 1067 156.343 0
+glyph 992 166.95 0
+glyph 170 183.974 0
+glyph 262 183.974 0
+glyph 657 195.029 0
+glyph 769 208.435 0
+glyph 696 215.033 0
+glyph 739 227.754 0
+fragment 243.828 17 0 1
+glyph 4 0 0
+fragment 0 39 0 28
+glyph 1119 0 0
+glyph 920 11.1401 0
+glyph 686 23.4419 0
+glyph 757 34.563 0
+glyph 72 48.4644 0
+glyph 4 59.4617 0
+glyph 14 64.2891 0
+glyph 54 72.687 0
+glyph 97 84.6936 0
+glyph 4 91.292 0
+glyph 68 96.1194 0
+glyph 1103 102.146 0
+glyph 4 113.268 0
+glyph 744 118.095 0
+glyph 366 127.978 0
+glyph 4 141.118 0
+glyph 681 145.945 0
+glyph 671 150.763 0
+glyph 164 161.37 0
+glyph 367 166.645 0
+glyph 89 181.289 0
+glyph 4 192.039 0
+glyph 7 196.866 0
+glyph 408 208.873 0
+glyph 4 224.307 0
+glyph 737 229.135 0
+glyph 4 233.867 0
+glyph 634 238.694 0
+fragment 251.781 39 0 1
+glyph 4 0 0
+fragment 0 61 0 25
+glyph 133 0 0
+glyph 1015 11.5972 0
+glyph 957 16.9006 0
+glyph 1040 30.3069 0
+glyph 981 41.3804 0
+glyph 1029 58.6809 0
+glyph 907 70.2495 0
+glyph 4 82.9131 0
+glyph 1141 87.7405 0
+glyph 7 96.9668 0
+glyph 759 108.973 0
+glyph 73 119.733 0
+glyph 4 130.063 0
+glyph 98 134.891 0
+glyph 342 148.154 0
+glyph 4 165.969 0
+glyph 1018 170.796 0
+glyph 997 183.517 0
+glyph 4 197.418 0
+glyph 333 202.246 0
+glyph 12 213.795 0
+glyph 782 220.46 0
+glyph 80 232.096 0
+glyph 168 236.828 0
+glyph 658 236.828 0
+fragment 250.234 61 0 1
+glyph 4 0 0
+fragment 0 83 0 7
+glyph 189 0 0
+glyph 1128 9.76904 0
+glyph 1079 23.3276 0
+glyph 978 33.6584 0
+glyph 659 42.8848 0
+glyph 410 56.291 0
+glyph 404 76.9146 0

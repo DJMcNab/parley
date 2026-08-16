@@ -81,36 +81,38 @@ pub(crate) fn render(output: &GlyphOutput, geometry: Geometry, fonts: &Fonts) ->
     );
     context.set_paint(Color::BLACK);
 
-    // Consecutive glyphs sharing a style become one run: a style change is a font or
-    // size change, which is exactly what a `GlyphRunBuilder` is built per.
-    let mut start = 0;
-    while start < output.glyphs.len() {
-        let style_index = output.glyphs[start].style;
-        let end = output.glyphs[start..]
-            .iter()
-            .position(|glyph| glyph.style != style_index)
-            .map_or(output.glyphs.len(), |offset| start + offset);
-
+    // One fragment is one `GlyphRunBuilder`: a fragment carries a single style by
+    // construction, which is exactly what the builder is built per, and drawing them
+    // separately means the image is laid out from the same origins the diff table
+    // reports rather than from re-summed absolute positions.
+    for fragment in &output.fragments {
         let style = output
             .styles
-            .get(usize::from(style_index))
-            .expect("a glyph's style index must be in range for its own output");
-        if let Some(font) = fonts.get(&style.postscript_name) {
-            GlyphRunBuilder::new(font.clone(), *context.transform())
-                .font_size(style.font_size)
-                .hint(false)
-                .build(
-                    output.glyphs[start..end].iter().map(|glyph| glifo::Glyph {
+            .get(usize::from(fragment.style))
+            .expect("a fragment's style index must be in range for its own output");
+        let Some(font) = fonts.get(&style.postscript_name) else {
+            continue;
+        };
+        GlyphRunBuilder::new(font.clone(), *context.transform())
+            .font_size(style.font_size)
+            .hint(false)
+            .build(
+                fragment.glyphs.iter().map(|glyph| {
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "rasterisation is f32 throughout; the f64 origin exists so \
+                                  the comparison does not re-round it, not for drawing"
+                    )]
+                    glifo::Glyph {
                         id: glyph.id,
-                        x: glyph.x,
-                        y: glyph.y,
-                    }),
-                    &mut caches,
-                    &mut image_cache,
-                )
-                .fill_glyphs(&mut context);
-        }
-        start = end;
+                        x: (fragment.origin_x + f64::from(glyph.x)) as f32,
+                        y: (fragment.origin_y + f64::from(glyph.y)) as f32,
+                    }
+                }),
+                &mut caches,
+                &mut image_cache,
+            )
+            .fill_glyphs(&mut context);
     }
 
     let mut pixmap = Pixmap::new(width, height);

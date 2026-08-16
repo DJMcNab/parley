@@ -77,7 +77,7 @@ fn check(
         .unwrap_or_else(|error| panic!("{}: failed to parse: {error}", path.display()));
 
     let laid_out = layout(&golden.case, font_cx, layout_cx);
-    let result = compare(&parley_output(&laid_out), &golden.output);
+    let result = compare(&parley_output(&laid_out, &golden.case), &golden.output);
 
     match (expect_failure, result) {
         (false, Ok(())) | (true, Err(_)) => None,

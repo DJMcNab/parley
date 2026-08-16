@@ -122,7 +122,7 @@ impl Oracle for ChromeOracle<'_> {
         })?;
 
         let laid_out = layout(case, &mut self.font_cx, &mut self.layout_cx);
-        let parley = parley_output(&laid_out);
+        let parley = parley_output(&laid_out, case);
         Ok(compare(&parley, &chrome))
     }
 }

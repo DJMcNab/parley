@@ -1,0 +1,70 @@
+seed 367
+note known issue: line-breaking divergence — Parley emits one glyph fewer than Chrome for the same text
+width 435.40625
+runs 3
+run 27.5 0 0 32.671875
+Ҽ tθҰКnĝŊ¸Y'Ӑ ҆‼“
+run 19.75 0 0 27.640625
+ҟΙẲẼẃă„ḀǽλΤîԇеѥ
+run 20.25 0 0 34
+5ČХєặĖ { îîύĞĤĆΞ￿
+styles 3
+style 27.5 Roboto-Regular
+style 19.75 Roboto-Regular
+style 20.25 Roboto-Regular
+fragments 5
+fragment 0 25 0 13
+glyph 332 0 0
+glyph 4 21.2561 0
+glyph 88 28.064 0
+glyph 194 37.0471 0
+glyph 1158 52.7039 0
+glyph 947 69.22 0
+glyph 82 86.8909 0
+glyph 721 102.064 0
+glyph 145 117.493 0
+glyph 121 136.547 0
+glyph 61 143.354 0
+glyph 11 159.871 0
+glyph 1016 164.664 0
+fragment 182.609 25 0 2
+glyph 4 0 0
+glyph 295 6.80786 0
+fragment 0 58 0 3
+glyph 295 0 0
+glyph 989 0 0
+glyph 392 14.1528 0
+fragment 23.875 58 1 15
+glyph 1157 0 0
+glyph 915 10.2511 0
+glyph 1072 15.6226 0
+glyph 1082 28.5063 0
+glyph 982 39.7314 0
+glyph 697 54.5729 0
+glyph 394 65.3158 0
+glyph 994 72.1145 0
+glyph 812 84.9983 0
+glyph 196 101.672 0
+glyph 921 112.608 0
+glyph 680 124.392 0
+glyph 357 129.272 0
+glyph 964 139.214 0
+glyph 268 149.678 0
+fragment 188.297 58 2 17
+glyph 25 0 0
+glyph 706 11.3708 0
+glyph 962 24.5511 0
+glyph 259 36.9899 0
+glyph 1077 47.8762 0
+glyph 714 58.8911 0
+glyph 4 70.4004 0
+glyph 95 75.4135 0
+glyph 4 82.2656 0
+glyph 680 87.2787 0
+glyph 680 92.2819 0
+glyph 939 97.285 0
+glyph 722 108.33 0
+glyph 728 122.123 0
+glyph 700 136.559 0
+glyph 181 149.739 0
+glyph 0 161.298 0

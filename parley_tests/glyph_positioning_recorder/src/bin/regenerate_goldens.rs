@@ -87,17 +87,16 @@ fn goldens_dir() -> PathBuf {
 ///
 /// One uniform rule across `handwritten/`, `regressions/`, `generated/` and
 /// `known_failing/`: whatever is on disk has its case re-recorded in place. A
-/// handwritten case is therefore authored by hand with `styles 0` / `glyphs 0` and
+/// handwritten case is therefore authored by hand with `styles 0` / `fragments 0` and
 /// filled in by the first run, and a promoted fuzz regression already arrives in
 /// exactly that shape.
 ///
-/// This tool does **not** invent new `generated/` seeds on its own: at the default
-/// sampling alphabet, most seeds trip the decomposition-cluster bug (see
-/// `known_failing/` and doc/glyph-positioning-chrome-parity-phase5.md), so picking a
-/// new seed blind — without comparing against Parley, which this recording-only tool
-/// deliberately never does — would as likely add a broken case as a clean one.
-/// Growing `generated/` needs an explicit pass/fail search; see how the initial corpus
-/// was curated in the Phase 5 doc.
+/// This tool does **not** invent new `generated/` seeds on its own. It never compares
+/// against Parley — that is `cargo test`'s job — so a blindly-added seed would go into
+/// the "expected to pass" corpus without anything having checked that it does. Most
+/// seeds do pass, but the ones that don't are exactly the cases worth classifying by
+/// hand into `known_failing/` with a note. Growing `generated/` therefore needs an
+/// explicit pass/fail search against a live container.
 fn collect_existing(root: &Path) -> Result<BTreeMap<PathBuf, (Case, Option<String>)>> {
     let mut work = BTreeMap::new();
     for path in text_files(root)? {

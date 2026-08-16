@@ -15,19 +15,74 @@ use crate::generate::{Case, Run};
 /// The deduplicated glyph output of laying out a [`Case`], from either Parley or
 /// Chrome.
 ///
+/// **Positions are stored per fragment, not absolutely.** A *fragment* is the unit
+/// Blink positions as a whole — one span's glyphs on one line — and both sides record
+/// the fragment's origin plus each glyph's offset from it. Two things depend on that
+/// split:
+///
+/// - Blink snaps every fragment origin after the first onto `LayoutUnit`'s 1/64 px
+///   grid, so the origin is where the two sides can legitimately differ while every
+///   glyph within a fragment still has to agree exactly.
+/// - `skp_parser` serialises the fragment origin and the glyph's offset as two
+///   *separate* 6-significant-figure numbers, so the error floor on an absolute
+///   position is the sum of their two half-ULPs. Storing only the sum throws away the
+///   information needed to compute that floor.
+///
 /// **There is no line concept**: Chrome exposes a true per-glyph `y`, so no line
 /// grouping needs inferring, and the schema survives future vertical-align work where
 /// glyphs on one line may sit on different baselines. Line grouping may be re-derived
 /// best-effort in failure *reporting*, never in this schema.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GlyphOutput {
-    /// The distinct styles referenced by [`Self::glyphs`], in first-appearance order.
+    /// The distinct styles referenced by [`Self::fragments`], in first-appearance
+    /// order.
     pub styles: Vec<Style>,
-    /// The positioned glyphs, in the order they were produced.
-    pub glyphs: Vec<PositionedGlyph>,
+    /// The fragments, in the order they were produced.
+    pub fragments: Vec<Fragment>,
 }
 
-/// A style referenced by one or more [`PositionedGlyph`]s.
+impl GlyphOutput {
+    /// The glyphs of every fragment, at absolute positions, in emission order.
+    ///
+    /// This is the flat view the comparison pairs on and the report generator draws;
+    /// the stored form is [`Self::fragments`], since the absolute position alone can't
+    /// express either the snapping or the serialisation floor (see the type docs).
+    #[must_use]
+    pub fn glyphs(&self) -> Vec<PositionedGlyph> {
+        self.fragments
+            .iter()
+            .flat_map(|fragment| {
+                fragment.glyphs.iter().map(move |glyph| PositionedGlyph {
+                    id: glyph.id,
+                    x: fragment.origin_x + f64::from(glyph.x),
+                    y: fragment.origin_y + f64::from(glyph.y),
+                    style: fragment.style,
+                })
+            })
+            .collect()
+    }
+
+    /// How many glyphs this output holds in total.
+    #[must_use]
+    pub fn glyph_count(&self) -> usize {
+        self.fragments
+            .iter()
+            .map(|fragment| fragment.glyphs.len())
+            .sum()
+    }
+
+    /// The number of glyphs in each fragment, in order — this output's *shape*, which
+    /// the comparison checks before it looks at any position.
+    #[must_use]
+    pub fn shape(&self) -> Vec<usize> {
+        self.fragments
+            .iter()
+            .map(|fragment| fragment.glyphs.len())
+            .collect()
+    }
+}
+
+/// A style referenced by one or more [`Fragment`]s.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Style {
     /// The selected font's PostScript name (`name` table entry, ID 6).
@@ -36,15 +91,56 @@ pub struct Style {
     pub font_size: f32,
 }
 
-/// A single positioned glyph.
+/// One span's glyphs on one line: the unit Blink positions as a whole.
+///
+/// Blink lays a line out by placing each fragment at the previous one's ceil-snapped
+/// end (`ShapeResult::SnappedWidth()`, a `LayoutUnit::FromFloatCeil`), so
+/// [`Self::origin_x`] is where the 1/64 px grid enters the comparison. Within a
+/// fragment, glyph offsets are unrounded on both sides.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Fragment {
+    /// The fragment's inline origin, in CSS px. Every glyph's [`LocalGlyph::x`] is
+    /// relative to this.
+    ///
+    /// f64, unlike the glyph offsets, because an origin is an *accumulator*: Blink
+    /// sums snapped fragment widths across a line, Parley sums advances in f64 for the
+    /// same reason, and Chrome's is a decimal this crate must not re-round. Narrowing
+    /// it to f32 costs half an f32 ULP — around 8e-6 px at the widths the corpus
+    /// reaches, which is a sixth of the serialisation floor and enough on its own to
+    /// push a matching case over it. A glyph offset is not an accumulator: it is one
+    /// shaped value, f32-native on both sides, so it stays f32.
+    pub origin_x: f64,
+    /// The fragment's baseline, in CSS px. Every glyph's [`LocalGlyph::y`] is relative
+    /// to this. f64 for the same reason as [`Self::origin_x`].
+    pub origin_y: f64,
+    /// Index into the owning [`GlyphOutput`]'s [`GlyphOutput::styles`].
+    pub style: u16,
+    /// The fragment's glyphs, in emission order.
+    pub glyphs: Vec<LocalGlyph>,
+}
+
+/// A glyph positioned relative to its owning [`Fragment`]'s origin.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LocalGlyph {
+    /// The glyph ID, in the selected font.
+    pub id: u32,
+    /// Offset from [`Fragment::origin_x`], in CSS px.
+    pub x: f32,
+    /// Offset from [`Fragment::origin_y`], in CSS px.
+    pub y: f32,
+}
+
+/// A single glyph at an absolute position — the derived view [`GlyphOutput::glyphs`]
+/// produces, never the stored one.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PositionedGlyph {
     /// The glyph ID, in the selected font.
     pub id: u32,
-    /// Absolute x position, in CSS px.
-    pub x: f32,
-    /// Absolute y position, in CSS px.
-    pub y: f32,
+    /// Absolute x position, in CSS px. f64, so summing the origin and the offset does
+    /// not re-round what [`Fragment::origin_x`] is f64 to preserve.
+    pub x: f64,
+    /// Absolute y position, in CSS px. f64, as [`Self::x`].
+    pub y: f64,
     /// Index into the owning [`GlyphOutput`]'s [`GlyphOutput::styles`].
     pub style: u16,
 }
@@ -54,7 +150,7 @@ pub struct PositionedGlyph {
 #[derive(Clone, Debug, Default)]
 pub struct GlyphOutputBuilder {
     styles: Vec<Style>,
-    glyphs: Vec<PositionedGlyph>,
+    fragments: Vec<Fragment>,
 }
 
 impl GlyphOutputBuilder {
@@ -70,17 +166,41 @@ impl GlyphOutputBuilder {
         }
     }
 
-    /// Appends a positioned glyph.
-    pub fn push_glyph(&mut self, id: u32, x: f32, y: f32, style: u16) {
-        self.glyphs.push(PositionedGlyph { id, x, y, style });
+    /// Starts a new fragment. Subsequent [`Self::push_glyph`] calls append to it.
+    pub fn begin_fragment(&mut self, origin_x: f64, origin_y: f64, style: u16) {
+        self.fragments.push(Fragment {
+            origin_x,
+            origin_y,
+            style,
+            glyphs: Vec::new(),
+        });
+    }
+
+    /// Appends a glyph, at an offset from the current fragment's origin.
+    ///
+    /// # Panics
+    ///
+    /// If no fragment has been started with [`Self::begin_fragment`].
+    pub fn push_glyph(&mut self, id: u32, x: f32, y: f32) {
+        self.fragments
+            .last_mut()
+            .expect("begin_fragment must be called before push_glyph")
+            .glyphs
+            .push(LocalGlyph { id, x, y });
     }
 
     /// Finishes building, returning the completed [`GlyphOutput`].
+    ///
+    /// Fragments that ended up with no glyphs are dropped: an empty fragment has no
+    /// position to compare and would only make the two sides' shapes disagree for a
+    /// reason neither side can act on.
     #[must_use]
-    pub fn build(self) -> GlyphOutput {
+    pub fn build(mut self) -> GlyphOutput {
+        self.fragments
+            .retain(|fragment| !fragment.glyphs.is_empty());
         GlyphOutput {
             styles: self.styles,
-            glyphs: self.glyphs,
+            fragments: self.fragments,
         }
     }
 }
@@ -155,14 +275,20 @@ impl Golden {
         for style in &self.output.styles {
             writeln!(out, "style {} {}", style.font_size, style.postscript_name).unwrap();
         }
-        writeln!(out, "glyphs {}", self.output.glyphs.len()).unwrap();
-        for glyph in &self.output.glyphs {
+        writeln!(out, "fragments {}", self.output.fragments.len()).unwrap();
+        for fragment in &self.output.fragments {
             writeln!(
                 out,
-                "glyph {} {} {} {}",
-                glyph.id, glyph.x, glyph.y, glyph.style
+                "fragment {} {} {} {}",
+                fragment.origin_x,
+                fragment.origin_y,
+                fragment.style,
+                fragment.glyphs.len()
             )
             .unwrap();
+            for glyph in &fragment.glyphs {
+                writeln!(out, "glyph {} {} {}", glyph.id, glyph.x, glyph.y).unwrap();
+            }
         }
         out
     }
@@ -229,27 +355,47 @@ impl Golden {
             });
         }
 
-        let glyph_count: usize = parse_tagged_line(lines.next(), "glyphs")?;
-        let mut glyphs = Vec::with_capacity(glyph_count);
-        for _ in 0..glyph_count {
-            let line = lines
-                .next()
-                .ok_or_else(|| parse_error("unexpected end of input reading a `glyph` line"))?;
-            let mut fields = line
-                .strip_prefix("glyph ")
-                .ok_or_else(|| parse_error(format!("expected `glyph ...`, got {line:?}")))?
+        let fragment_count: usize = parse_tagged_line(lines.next(), "fragments")?;
+        let mut fragments = Vec::with_capacity(fragment_count);
+        for _ in 0..fragment_count {
+            let header = lines.next().ok_or_else(|| {
+                parse_error("unexpected end of input reading a `fragment` header")
+            })?;
+            let mut fields = header
+                .strip_prefix("fragment ")
+                .ok_or_else(|| parse_error(format!("expected `fragment ...`, got {header:?}")))?
                 .split(' ');
-            let id = parse_field(&mut fields, "glyph.id")?;
-            let x = parse_field(&mut fields, "glyph.x")?;
-            let y = parse_field(&mut fields, "glyph.y")?;
-            let style = parse_field(&mut fields, "glyph.style")?;
-            glyphs.push(PositionedGlyph { id, x, y, style });
+            let origin_x = parse_field(&mut fields, "fragment.origin_x")?;
+            let origin_y = parse_field(&mut fields, "fragment.origin_y")?;
+            let style = parse_field(&mut fields, "fragment.style")?;
+            let glyph_count: usize = parse_field(&mut fields, "fragment.glyph_count")?;
+
+            let mut glyphs = Vec::with_capacity(glyph_count);
+            for _ in 0..glyph_count {
+                let line = lines
+                    .next()
+                    .ok_or_else(|| parse_error("unexpected end of input reading a `glyph` line"))?;
+                let mut fields = line
+                    .strip_prefix("glyph ")
+                    .ok_or_else(|| parse_error(format!("expected `glyph ...`, got {line:?}")))?
+                    .split(' ');
+                let id = parse_field(&mut fields, "glyph.id")?;
+                let x = parse_field(&mut fields, "glyph.x")?;
+                let y = parse_field(&mut fields, "glyph.y")?;
+                glyphs.push(LocalGlyph { id, x, y });
+            }
+            fragments.push(Fragment {
+                origin_x,
+                origin_y,
+                style,
+                glyphs,
+            });
         }
 
         Ok(Self {
             case: Case { seed, runs, width },
             note,
-            output: GlyphOutput { styles, glyphs },
+            output: GlyphOutput { styles, fragments },
         })
     }
 }

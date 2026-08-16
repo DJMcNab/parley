@@ -103,8 +103,8 @@ fn header(out: &mut String, report: &CaseReport, name: &str) {
     writeln!(
         out,
         "<dt>glyphs</dt><dd>Parley {}, Chrome {}</dd>",
-        report.parley.glyphs.len(),
-        report.golden.output.glyphs.len()
+        report.parley.glyph_count(),
+        report.golden.output.glyph_count()
     )
     .unwrap();
     let (max_dx, max_dy) = report.max_delta();
@@ -135,6 +135,9 @@ fn mismatch_total(mismatch: &parley_glyph_positioning_cases::Mismatch) -> usize 
     match mismatch {
         parley_glyph_positioning_cases::Mismatch::GlyphCount { parley, chrome } => {
             (*parley).max(*chrome)
+        }
+        parley_glyph_positioning_cases::Mismatch::Fragmentation { parley, chrome } => {
+            parley.iter().sum::<usize>().max(chrome.iter().sum())
         }
         parley_glyph_positioning_cases::Mismatch::Glyphs { total, .. } => *total,
     }

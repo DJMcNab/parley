@@ -246,7 +246,7 @@ obscured by a large style/grammar surface.
   change to `from_seed` silently repoints every golden at a different case
   while the suite keeps passing. **Phase 4 correction:** handwritten cases have
   no separate source of truth — they are authored *as* golden files with an
-  empty output section (`styles 0` / `glyphs 0`) and filled in by
+  empty output section (`styles 0` / `fragments 0`) and filled in by
   `regenerate_goldens`, which re-records every existing file in place. That
   gives one uniform rule across all three directories, and promoted fuzz
   regressions already arrive in exactly that shape. The format gains an optional
@@ -408,7 +408,9 @@ the Phase 5 test and the Phase 4 fuzz loop cannot drift apart.
 The output schema is a deduplicated `styles` table plus a flat
 `Vec<{ id, x, y, style }>` with **no line concept** — Chrome exposes a true
 per-glyph `y`, so lines need not be inferred, and the schema survives future
-vertical-align work.
+vertical-align work. *(Superseded by bring-up step B13 below: the glyph list is now
+grouped into fragments, each with an origin the glyph positions are relative to. The
+"no line concept" half still holds.)*
 
 ### Phase 2 — browser harness (delegate to a Sonnet subagent)
 
@@ -505,6 +507,33 @@ initial corpus is a curated **15 passing + 15 known-failing** cases rather
 than the originally planned 50, and `regenerate_goldens` no longer
 auto-generates new `generated/` seeds from a blind range (unsound at this
 failure rate) — it only re-records whatever is already on disk.
+
+### Bring-up step B13 — fragment-origin snapping
+
+#### DONE
+
+**Fully recorded in
+[`glyph-positioning-fragment-snapping.md`](./glyph-positioning-fragment-snapping.md).**
+The last open bring-up step, and the reason `MAX_RUNS` was pinned to 1. Blink places
+each fragment on a line at the previous one's width ceil-rounded onto `LayoutUnit`'s
+1/64 px grid; that is now modelled in
+`parley_glyph_positioning_extract::parley_output` rather than tolerated, so the
+comparison stays exact. `MAX_RUNS` is 4 again.
+
+Three things in the decisions above are superseded by it:
+
+- **The output schema is fragment-structured, not flat.** `GlyphOutput` is a list of
+  fragments carrying an origin plus glyph offsets *local* to it, with
+  `GlyphOutput::glyphs()` deriving the flat absolute view. Both the snapping and the
+  serialisation floor need the origin and the offset kept apart. There is still no
+  line concept.
+- **The comparison predicate is
+  `|Δ| ≤ half_ulp_6sig(origin) + half_ulp_6sig(offset)`.** `skp_parser` rounds those
+  two numbers independently, so the floor on their sum is the sum of their floors.
+  Phase 4's "the predicate collapses to `half_ulp_6sig(other)`" held only while a
+  line could hold one fragment, where the origin is always 0.
+- **`compare` has a third failure mode, `Fragmentation`**, checked between glyph
+  count and positions.
 
 ### Phase 6 — workspace/CI wiring
 

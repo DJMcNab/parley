@@ -1,0 +1,119 @@
+seed 220
+width 431.09375
+runs 2
+run 19.5 0 0 23.921875
+ҋ ẅғРĚỐ ờỉˇο ЌЖĠνẃĨỖ ⁿû Χ ¢řǿŗŲğĵĐŖổЎТԍϊḿỡЪẮά ѼŠԍǿ
+run 23.5 0 0 39.109375
+αѩỄẩҞŃợþӦξỄ 4Ьó΄η*ĶЈ ¯ ðтԐắé⅛₪–gƏˆΜҾ oẩӝѪﬁ ΅₣ĚσҩŪw
+styles 2
+style 19.5 Roboto-Regular
+style 23.5 Roboto-Regular
+fragments 8
+fragment 0 18 0 25
+glyph 299 0 0
+glyph 4 12.0066 0
+glyph 984 16.834 0
+glyph 1155 31.4875 0
+glyph 959 39.6665 0
+glyph 718 51.9683 0
+glyph 1102 63.0513 0
+glyph 4 76.4575 0
+glyph 1115 81.2849 0
+glyph 1095 92.425 0
+glyph 159 97.2429 0
+glyph 932 105.898 0
+glyph 4 117.019 0
+glyph 948 121.846 0
+glyph 218 134.072 0
+glyph 724 151.772 0
+glyph 934 165.055 0
+glyph 982 174.5 0
+glyph 730 189.154 0
+glyph 1108 194.457 0
+glyph 4 207.864 0
+glyph 406 212.691 0
+glyph 690 220.917 0
+glyph 4 231.667 0
+glyph 923 236.495 0
+fragment 248.734 18 0 1
+glyph 4 0 0
+fragment 0 51 0 24
+glyph 100 0 0
+glyph 771 10.6641 0
+glyph 814 17.2625 0
+glyph 769 28.3074 0
+glyph 798 34.9058 0
+glyph 723 47.5503 0
+glyph 742 58.4905 0
+glyph 634 63.394 0
+glyph 768 76.467 0
+glyph 1107 88.4736 0
+glyph 949 99.5947 0
+glyph 961 112.02 0
+glyph 363 122.713 0
+glyph 936 132.739 0
+glyph 993 139.052 0
+glyph 1119 156.143 0
+glyph 228 167.283 0
+glyph 1068 182.079 0
+glyph 926 194.8 0
+glyph 4 205.816 0
+glyph 285 210.644 0
+glyph 780 227.716 0
+glyph 363 239.284 0
+glyph 814 249.311 0
+fragment 260.359 51 1 11
+glyph 187 0 0
+glyph 272 13.2761 0
+glyph 1090 31.0273 0
+glyph 1063 44.3838 0
+glyph 1156 57.1665 0
+glyph 753 72.4966 0
+glyph 1121 89.2495 0
+glyph 138 102.675 0
+glyph 1035 116.215 0
+glyph 197 132.371 0
+glyph 1090 143.892 0
+fragment 417.609 51 1 1
+glyph 4 0 0
+fragment 0 90 1 30
+glyph 24 0 0
+glyph 230 13.1958 0
+glyph 684 27.9407 0
+glyph 174 41.343 0
+glyph 193 47.3672 0
+glyph 14 60.6777 0
+glyph 743 70.7983 0
+glyph 946 85.5317 0
+glyph 4 98.498 0
+glyph 112 104.316 0
+glyph 4 115.079 0
+glyph 135 120.896 0
+glyph 246 134.666 0
+glyph 366 145.957 0
+glyph 1069 161.792 0
+glyph 675 174.575 0
+glyph 424 187.025 0
+glyph 412 205.086 0
+glyph 385 223.204 0
+glyph 75 238.626 0
+glyph 150 251.81 0
+glyph 158 268.047 0
+glyph 917 279.108 0
+glyph 1149 299.625 0
+glyph 4 317.789 0
+glyph 83 323.607 0
+glyph 1063 337.009 0
+glyph 1028 349.792 0
+glyph 273 367.784 0
+glyph 444 387.807 0
+fragment 400.828 90 1 1
+glyph 4 0 0
+fragment 0 129 1 7
+glyph 175 0 0
+glyph 1163 11.8762 0
+glyph 718 24.8655 0
+glyph 201 38.2219 0
+glyph 322 51.5325 0
+glyph 790 65.7036 0
+glyph 91 80.9419 0

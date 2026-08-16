@@ -1,0 +1,52 @@
+seed 434
+note known issue: line-breaking divergence, root-caused. The third run's text has a currency sign (¤, U+00A4, Unicode line-break class PR) immediately followed by an open parenthesis ("(", class OP), with no digit anywhere after — real Chrome/ICU treats PR-then-OP as a break opportunity here (confirmed against live container Chrome on isolated variants: "С¤(Ựâ" breaks between ¤ and (, "С¤Ұâ" with the "(" removed does not, "С(Ựâ" with the ¤ removed does not, and "С¤(1â" with a digit after the "(" still breaks in the same place, ruling out LB25's numeric-context exception). `parley_engine`'s `icu_segmenter` 2.2.0 `LineSegmenter` (dictionary mode) reports no break opportunity anywhere in "С¤(Ựâ" at all — it appears to implement the older, context-free UAX #14 LB25 pair-table entry that unconditionally glues PR/PO to a following OP, rather than the newer regex-based LB25 (requiring a trailing NU) that real ICU uses. This looks like an icu_segmenter version/rule-revision gap worth reporting upstream, not a parley-side bug; see doc/glyph-positioning-fragment-snapping.md's "Diagnosed: seed 434" section
+width 277.82813
+runs 3
+run 19.25 0 0 33.28125
+ӝΒ Ԏ жЙŃì ҃
+run 10.5 0 0 16.28125
+Ûѳ mċ ằĶòms
+run 23.75 0 0 41.609375
+Қ є С¤(Ựâ Į
+styles 3
+style 19.25 Roboto-Regular
+style 10.5 Roboto-Regular
+style 23.75 Roboto-Regular
+fragments 4
+fragment 0 28 0 11
+glyph 1028 0 0
+glyph 911 14.7383 0
+glyph 4 26.7225 0
+glyph 364 31.488 0
+glyph 4 45.1454 0
+glyph 238 49.9109 0
+glyph 954 64.6492 0
+glyph 753 78.3723 0
+glyph 678 92.0955 0
+glyph 4 96.8516 0
+glyph 292 101.617 0
+fragment 101.625 28 1 11
+glyph 663 0 0
+glyph 280 6.80859 0
+glyph 4 12.7712 0
+glyph 81 15.3706 0
+glyph 705 24.5735 0
+glyph 4 30.0696 0
+glyph 1071 32.6689 0
+glyph 743 38.3804 0
+glyph 683 44.825 0
+glyph 81 50.8132 0
+glyph 87 60.0161 0
+fragment 167.062 28 2 6
+glyph 309 0 0
+glyph 4 16.6296 0
+glyph 259 22.5092 0
+glyph 4 35.2771 0
+glyph 960 41.1566 0
+glyph 102 56.615 0
+fragment 0 70 2 5
+glyph 12 0 0
+glyph 1134 8.11768 0
+glyph 668 24.6313 0
+glyph 4 37.55 0
+glyph 736 43.4296 0

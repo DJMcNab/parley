@@ -5,37 +5,38 @@ run 19.75 0 0 30.28125
 Ψ) φPŨ ԏф₱ҜŁǻΨ́єŦ҄ť Д Ấâ , | ĥνεΫ
 styles 1
 style 19.75 Roboto-Regular
-glyphs 33
-glyph 185 0 21 0
-glyph 13 13.6649 21 0
-glyph 4 20.5311 21 0
-glyph 204 25.4204 21 0
-glyph 52 39.3361 21 0
-glyph 788 51.7955 21 0
-glyph 4 64.6022 21 0
-glyph 365 69.4915 21 0
-glyph 247 82.1438 21 0
-glyph 414 96.4645 21 0
-glyph 311 110.911 21 0
-glyph 143 123.341 21 0
-glyph 672 133.978 21 0
-glyph 185 144.721 21 0
-glyph 169 158.386 21 0
-glyph 259 158.386 21 0
-glyph 637 169.003 21 0
-glyph 293 180.788 21 0
-glyph 787 180.788 21 0
-glyph 4 187.625 21 0
-glyph 217 192.514 21 0
-glyph 4 207.365 21 0
-glyph 1058 212.255 21 0
-glyph 668 225.138 21 0
-glyph 4 235.881 21 0
-glyph 16 240.771 21 0
-glyph 4 244.647 21 0
-glyph 96 249.537 21 0
-glyph 4 254.349 21 0
-glyph 729 259.238 21 0
-glyph 934 270.116 21 0
-glyph 191 279.682 21 0
-glyph 925 290.329 21 0
+fragments 1
+fragment 0 21 0 33
+glyph 185 0 0
+glyph 13 13.6649 0
+glyph 4 20.5311 0
+glyph 204 25.4204 0
+glyph 52 39.3361 0
+glyph 788 51.7955 0
+glyph 4 64.6022 0
+glyph 365 69.4915 0
+glyph 247 82.1438 0
+glyph 414 96.4645 0
+glyph 311 110.911 0
+glyph 143 123.341 0
+glyph 672 133.978 0
+glyph 185 144.721 0
+glyph 169 158.386 0
+glyph 259 158.386 0
+glyph 637 169.003 0
+glyph 293 180.788 0
+glyph 787 180.788 0
+glyph 4 187.625 0
+glyph 217 192.514 0
+glyph 4 207.365 0
+glyph 1058 212.255 0
+glyph 668 225.138 0
+glyph 4 235.881 0
+glyph 16 240.771 0
+glyph 4 244.647 0
+glyph 96 249.537 0
+glyph 4 254.349 0
+glyph 729 259.238 0
+glyph 934 270.116 0
+glyph 191 279.682 0
+glyph 925 290.329 0

@@ -1,0 +1,145 @@
+seed 211
+width 371.625
+runs 4
+run 27.5 0 0 37.9375
+Ϋ Å҈₺#ӅẶΩHẾ̃ Šḁр*‚Ġ
+run 24 0 0 28.8125
+ъԌÚʼ ¸ ŲГ8ӏáĦΠύгӞű-ҜŬЩḈẸҋ
+run 11.75 0 0 19.53125
+Ĳ ӈ8ӶэΌ ėą§ ℓ Ў™nν⅞€ﬁệ˙†҉Ħ ÀưΊԒ
+run 15 0 0 12.953125
+·ЫĞ³ợ«ЄӱȚ₦Ӯ ?÷m Ӫ̃ ®ỈứΎӘҚφEĞ˝ΰ7¶₧Ӝ‚‧ŝ6 ςқҀ
+styles 4
+style 27.5 Roboto-Regular
+style 24 Roboto-Regular
+style 11.75 Roboto-Regular
+style 15 Roboto-Regular
+fragments 10
+fragment 0 28 0 19
+glyph 925 0 0
+glyph 4 16.5161 0
+glyph 644 23.324 0
+glyph 296 41.2634 0
+glyph 416 41.2634 0
+glyph 7 56.571 0
+glyph 336 73.5034 0
+glyph 1076 94.1016 0
+glyph 186 112.041 0
+glyph 44 130.33 0
+glyph 1084 149.934 0
+glyph 170 165.564 0
+glyph 4 165.564 0
+glyph 780 172.372 0
+glyph 995 188.687 0
+glyph 967 203.645 0
+glyph 14 219.073 0
+glyph 390 230.917 0
+glyph 724 236.382 0
+fragment 255.125 28 1 6
+glyph 252 0 0
+glyph 362 14.8945 0
+glyph 662 29.7773 0
+glyph 991 45.3398 0
+glyph 4 50.1328 0
+glyph 121 56.0742 0
+fragment 317.141 28 1 1
+glyph 4 0 0
+fragment 0 60 1 19
+glyph 798 0 0
+glyph 952 15.5625 0
+glyph 28 28.9102 0
+glyph 1015 42.3867 0
+glyph 667 48.9141 0
+glyph 140 61.9688 0
+glyph 182 78.7734 0
+glyph 939 95.8945 0
+glyph 236 108.984 0
+glyph 1029 119.051 0
+glyph 797 133.289 0
+glyph 17 146.52 0
+glyph 311 153.141 0
+glyph 792 168.246 0
+glyph 227 183.809 0
+glyph 646 207.059 0
+glyph 169 222.68 0
+glyph 1078 222.68 0
+glyph 299 236.32 0
+fragment 251.109 60 2 13
+glyph 739 0 0
+glyph 4 9.67883 0
+glyph 339 12.5876 0
+glyph 28 19.2429 0
+glyph 1147 25.8408 0
+glyph 255 31.0159 0
+glyph 906 37.3326 0
+glyph 4 45.5255 0
+glyph 715 48.4343 0
+glyph 699 54.6593 0
+glyph 105 61.0507 0
+glyph 4 68.2567 0
+glyph 420 71.1655 0
+fragment 327.875 60 2 1
+glyph 4 0 0
+fragment 0 80 2 17
+glyph 949 0 0
+glyph 422 7.38391 0
+glyph 82 14.7334 0
+glyph 934 21.2166 0
+glyph 427 26.908 0
+glyph 413 36.3286 0
+glyph 444 42.9265 0
+glyph 1093 49.4326 0
+glyph 162 55.6576 0
+glyph 395 58.509 0
+glyph 297 64.9865 0
+glyph 140 64.9865 0
+glyph 4 73.2137 0
+glyph 639 76.1226 0
+glyph 155 83.7245 0
+glyph 905 90.9937 0
+glyph 367 94.1893 0
+fragment 103.016 80 3 18
+glyph 176 0 0
+glyph 229 3.91846 0
+glyph 722 16.8896 0
+glyph 116 27.1069 0
+glyph 1121 32.6074 0
+glyph 109 41.1768 0
+glyph 211 48.2153 0
+glyph 1046 58.3228 0
+glyph 782 65.4199 0
+glyph 408 74.3701 0
+glyph 1043 86.2427 0
+glyph 4 95.6689 0
+glyph 35 99.3823 0
+glyph 136 106.465 0
+glyph 81 115.027 0
+glyph 4 128.174 0
+glyph 1039 131.887 0
+glyph 170 142.09 0
+fragment 245.109 80 3 1
+glyph 4 0 0
+fragment 0 97 3 23
+glyph 111 0 0
+glyph 1094 11.792 0
+glyph 1127 15.8716 0
+glyph 907 25.1514 0
+glyph 344 34.8926 0
+glyph 309 45.2563 0
+glyph 204 55.7593 0
+glyph 41 66.3281 0
+glyph 722 74.8535 0
+glyph 166 85.0708 0
+glyph 930 90.6665 0
+glyph 27 98.8477 0
+glyph 119 107.271 0
+glyph 409 114.602 0
+glyph 1027 126.907 0
+glyph 390 140.522 0
+glyph 400 143.503 0
+glyph 775 146.301 0
+glyph 26 154.036 0
+glyph 4 162.458 0
+glyph 200 166.172 0
+glyph 310 174.236 0
+glyph 289 183.083 0

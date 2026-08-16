@@ -59,23 +59,18 @@ pub struct Run {
 }
 
 /// Inclusive bounds on the number of runs in a generated case.
-/// **Temporarily pinned to 1 run per case.** With more than one run, a run boundary's
-/// position is `SnappedWidth()`-ceil-rounded to `LayoutUnit`'s 1/64 px grid on the Chrome
-/// side (see bring-up step B13 in the Phase 4 doc — confirmed from
-/// `third_party/blink/renderer/platform/fonts/shaping/shape_result.h:170`) and not
-/// modelled on the Parley side, so every case with ≥2 runs carries an unmodelled ~1/64 px
-/// step at each boundary. A single run has no run boundary to step at, so this defers
-/// modelling that rounding rather than working around it with a fudge factor. Restore
-/// `MAX_RUNS` to 4 once that rounding is modelled in
-/// `parley_glyph_positioning_extract`.
 ///
-/// This does not defer B13 as a whole: bring-up found it can still appear at a *line*
-/// boundary within a single run (e.g. a hanging trailing space per B9), since Blink
-/// positions that space as a fragment following the line's main text fragment the same
-/// way it positions a second run. Restricting run count only removes the *cross-run*
-/// occurrence.
+/// More than one run per case means more than one *fragment* per line, which is the
+/// whole point: Blink places each fragment at the previous one's width rounded up onto
+/// `LayoutUnit`'s 1/64 px grid, and that rounding is now modelled on the Parley side by
+/// `parley_glyph_positioning_extract::parley_output`. Before it was modelled, every
+/// case with two or more runs carried an unmodelled step at each boundary, and this was
+/// pinned to 1.
+///
+/// Adjacent runs are still forbidden from sharing a font size — see
+/// [`sample_font_size`] — because that one shape remains unmodellable.
 const MIN_RUNS: usize = 1;
-const MAX_RUNS: usize = 1;
+const MAX_RUNS: usize = 4;
 
 /// Inclusive bounds on the total text length (in characters) of a generated case.
 const MIN_TOTAL_LEN: usize = 30;
@@ -171,11 +166,13 @@ impl Case {
         let lengths = partition_length(&mut rng, total_len, num_runs);
 
         let mut prev_was_space = true;
+        let mut previous_font_size = None;
         let runs: Vec<Run> = lengths
             .into_iter()
             .map(|len| {
                 let text = generate_run_text(&mut rng, alphabet, len, &mut prev_was_space);
-                let font_size = sample_font_size(&mut rng);
+                let font_size = sample_font_size(&mut rng, previous_font_size);
+                previous_font_size = Some(font_size);
                 let letter_spacing = sample_spacing(&mut rng, LETTER_SPACING_RANGE_PX);
                 let word_spacing = sample_spacing(&mut rng, WORD_SPACING_RANGE_PX);
                 let line_height = sample_line_height(&mut rng, font_size);
@@ -237,18 +234,33 @@ fn generate_run_text(
 
 /// Samples a font size in `[MIN_FONT_SIZE, MAX_FONT_SIZE]`, on the [`FONT_SIZE_STEP`]
 /// grid, rerolling from the same RNG stream whenever the `FreeType` ascent/descent hack
-/// would fire for the bundled font at this size.
+/// would fire for the bundled font at this size, or whenever the size would equal
+/// `previous`, the size of the run before this one.
 ///
 /// Sizes land exactly on the grid, with no sub-step offset: they are chosen so *neither*
 /// of Blink's size quantizations moves them, which makes [`quantize_font_size`] a no-op
 /// here by construction rather than something the corpus has to exercise.
-fn sample_font_size(rng: &mut ChaCha8Rng) -> f32 {
+///
+/// **Why adjacent runs may not share a size.** Two adjacent spans are always two
+/// fragments to Blink, which snaps between them; but Parley's `Line::items` splits on
+/// *resolved style*, so two spans that resolve identically arrive as a single glyph run
+/// with no boundary to snap at. Nothing on the Parley side can recover that boundary,
+/// so the divergence is designed out of generated cases rather than modelled. Font size
+/// is the only property whose inequality is enough to guarantee the styles differ, so
+/// it is the one constrained here. A handwritten case that puts two identical spans
+/// side by side is choosing to reintroduce this; `compare` reports it as a
+/// fragmentation mismatch rather than as a wall of positions.
+fn sample_font_size(rng: &mut ChaCha8Rng, previous: Option<f32>) -> f32 {
     let (hhea_descender, units_per_em) = roboto_metrics();
     loop {
         let size = MIN_FONT_SIZE + rng.random_range(0..=FONT_SIZE_STEPS) as f32 * FONT_SIZE_STEP;
-        if !hack_would_fire(hhea_descender, units_per_em, size) {
-            return size;
+        if hack_would_fire(hhea_descender, units_per_em, size) {
+            continue;
         }
+        if previous == Some(size) {
+            continue;
+        }
+        return size;
     }
 }
 

@@ -51,6 +51,18 @@ and size.
 
 ## The decomposition-cluster bug is not rare
 
+> **Superseded, 2026-08-15.** This section's attribution is wrong. The ~1/64 px
+> residuals below are Blink's fragment-origin snapping at a wrapped line's hanging
+> trailing whitespace, not `parley_engine`'s cluster boundaries: every one of the 15
+> `known_failing/` cases this section produced now passes and has been promoted into
+> `generated/`. See
+> [`glyph-positioning-fragment-snapping.md`](./glyph-positioning-fragment-snapping.md).
+> The controlled plain-ASCII check cited below does not discriminate between the two
+> hypotheses — what decides whether the snapping fires is hanging trailing whitespace,
+> not script. Phase 4's *letter/word-spacing* double-charge is unaffected and remains
+> a real bug. The rest of this section is left as written, as the record of what was
+> believed at the time.
+
 Phase 4's fuzzing (with `LETTER_SPACING_RANGE_PX`/`WORD_SPACING_RANGE_PX` pinned to
 `(0.0, 0.0)` and `MAX_RUNS = 1`) found the bug described in its "Findings" section —
 a character HarfBuzz shapes as multiple glyphs under one cluster, which desyncs
@@ -83,6 +95,10 @@ Given the scale, restricting the sampling alphabet or fixing the underlying
 "Open follow-ups"). The initial corpus was curated around the bug instead.
 
 ## The initial corpus is 15 passing + 15 known-failing, not 50
+
+> **Superseded, 2026-08-15**, for the same reason as the section above: the corpus is
+> now 50 `generated/` + 5 `known_failing/`, and the 86% failure rate that motivated
+> shrinking it was the snapping, since modelled.
 
 Reaching Phase 4's originally-planned 50 clean `generated/` cases would mean
 searching roughly 350 candidate seeds at the ~86% failure rate above. Rather than do
@@ -126,17 +142,18 @@ above), not a blind seed range.
 
 ## Open follow-ups (not done this phase)
 
-- **Root-cause and fix the decomposition-cluster bug** in
+- ~~**Root-cause and fix the decomposition-cluster bug**~~ — the cases this pointed at
+  were misattributed; see the note above. The spacing-triggered bug Phase 4 found is
+  still real and still keeps the spacing ranges pinned to zero. Original text: in
   `parley_engine/src/shape/shaped_text.rs`'s cluster-boundary detection (see the
   Phase 4 doc's "A real Parley bug, found via the uniform offset cases"), or restrict
   the sampling alphabet to avoid it. Either would let `generated/` grow past its
   current 86%-failure ceiling.
 - **Grow `generated/` and `known_failing/`** once one of the above lands, and
   consider promoting a `handwritten/` case or two from Phase 4's bring-up fixtures.
-- **B13's line-wrap-boundary residual** is still unconfirmed at real scale — the
-  decomposition bug dominates every sample taken so far, so B13 has not been cleanly
-  observed in isolation since Phase 4's small-sample "B12/B13 preview." Revisit once
-  the decomposition bug no longer swamps the signal.
+- ~~**B13's line-wrap-boundary residual** is still unconfirmed at real scale.~~ Done:
+  it was the dominant term all along, and is now modelled. See
+  [`glyph-positioning-fragment-snapping.md`](./glyph-positioning-fragment-snapping.md).
 
 ## Verification
 
