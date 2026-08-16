@@ -1,38 +1,6 @@
 // Copyright 2026 the Parley Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Signature-preserving minimisation of a failing [`Case`].
-//!
-//! Given a [`Case`] that an [`Oracle`] reports as failing, [`minimise`] repeatedly
-//! shrinks it — dropping the width to the trivial single-line value, snapping scalars to
-//! their exact targets, deleting characters, and replacing characters with earlier
-//! alphabet entries — accepting each shrink only if the case still fails with the same
-//! [`FailureSignature`]. This produces a small, deterministic **canonical** form for a
-//! failure without needing to know *why* it fails: the signature check is what keeps a
-//! shrink from wandering into an unrelated bug.
-//!
-//! The oracle is intentionally sync and generic (a plain closure works, via the blanket
-//! [`Oracle`] impl) so this whole engine is unit-testable without Chrome. The
-//! Chrome-backed oracle and CLI live in `parley_glyph_positioning_recorder`, which is
-//! native-only.
-//!
-//! # Determinism
-//!
-//! Every rule iterates in a fixed order over a fixed enumeration (run index, then
-//! character position, then alphabet index), with no RNG and no wall-clock dependency.
-//! Given the same case and an oracle that answers deterministically, [`minimise`]
-//! produces the same [`MinimiseOutcome`] every time.
-//!
-//! # Candidate validity
-//!
-//! Every candidate [`Case`] a rule considers is checked against
-//! [`is_valid_candidate`] *before* it is ever shown to the oracle: an invalid candidate
-//! is rejected locally, without spending an oracle call. This mirrors the invariants
-//! [`Case::from_seed`] guarantees for a generated case (see "The `Case` grammar" in
-//! `doc/glyph-positioning-chrome-parity-phase1.md`), so a minimised case remains
-//! something the harness — and a human reading it — can trust follows the same
-//! grammar as every other case.
-
 use std::fmt::Write as _;
 
 use crate::chromium_quantization::{LAYOUT_UNIT_STEPS_PER_PX, SPACING_GRID_STEPS_PER_PX};
@@ -43,54 +11,26 @@ use crate::generate::{
 };
 use crate::signature::FailureSignature;
 
-/// The number of grid steps per CSS px [`sample_font_size`](crate::generate)'s
-/// `FONT_SIZE_STEP` grid uses. Kept local (rather than re-deriving `1.0 /
-/// FONT_SIZE_STEP` at every call site) purely for readability at the ladder call sites
-/// in [`Minimiser::scalar_ladder`].
 const FONT_SIZE_STEPS_PER_PX: f32 = 1.0 / FONT_SIZE_STEP;
 
-/// The maximum number of shrink passes [`minimise`] runs before stopping even if the
-/// case is still changing. Every accepted step strictly shrinks something (text length,
-/// a scalar's grid-step distance to its target, or a character's alphabet index), so in
-/// practice a fixed point is reached in far fewer passes than this; it exists as a
-/// backstop against a rule ordering that could in principle keep unlocking new shrinks
-/// of each other indefinitely.
+// A safety bound for passes whose reductions can unlock one another.
 const MAX_PASSES: u32 = 5;
 
-/// The number of alphabet candidates scanned per character position in the min-first
-/// scan ([`Minimiser::char_scan`]).
-///
-/// Must be large enough to clear Roboto's combining-mark range: [`alphabet`] is sorted
-/// by codepoint, and the ASCII + Latin-1 + Latin Extended-A/B prefix below U+0300 (where
-/// Roboto's combining marks begin) occupies roughly 400-500 of its entries. 600 gives
-/// comfortable margin over that; re-derive this bound if the bundled font
-/// ([`crate::FONTS`]) changes.
+// This reaches beyond Roboto's Latin characters into its combining marks.
 const CHAR_SCAN_CAP: usize = 600;
 
-/// Why an [`Oracle`] could not evaluate a candidate case at all.
+/// An error returned while evaluating a candidate.
 #[derive(Clone, Debug)]
 pub struct OracleFailure {
-    /// A human-readable description of the failure, for skip/abort reporting.
+    /// Human-readable error.
     pub message: String,
-    /// Whether this failure should abort minimisation outright (`Err`), rather than
-    /// being recorded as a skip and continuing with the next candidate.
+    /// Whether minimisation must stop.
     pub fatal: bool,
 }
 
-/// Evaluates whether a [`Case`] reproduces the failure being minimised.
-///
-/// A blanket implementation covers any `FnMut(&Case) -> Result<Result<(), Mismatch>,
-/// OracleFailure>` closure, which is all the engine's own unit tests use; the
-/// Chrome-backed implementation lives in `parley_glyph_positioning_recorder`, which
-/// wraps captures and comparison behind this same interface.
+/// Evaluates whether a case reproduces a mismatch.
 pub trait Oracle {
-    /// Evaluates `case`.
-    ///
-    /// - `Ok(Ok(()))`: the case passes — it does not reproduce the failure.
-    /// - `Ok(Err(mismatch))`: the case fails with `mismatch`.
-    /// - `Err(failure)`: the case could not be evaluated (e.g. a transient capture
-    ///   error). The candidate is skipped unless [`failure.fatal`](OracleFailure::fatal)
-    ///   is set, in which case minimisation aborts.
+    /// Returns the comparison result, or an evaluation error.
     fn evaluate(&mut self, case: &Case) -> Result<Result<(), Mismatch>, OracleFailure>;
 }
 
@@ -103,50 +43,35 @@ where
     }
 }
 
-/// Why [`minimise`] could not produce a [`MinimiseOutcome`].
+/// An error preventing minimisation.
 #[derive(Debug)]
 pub enum MinimiseError {
-    /// The original case already passes: there is nothing to minimise.
+    /// The original case does not fail.
     BaselinePasses,
-    /// The oracle could not evaluate the original case at all, or a later fatal
-    /// [`OracleFailure`] aborted minimisation.
+    /// The oracle could not evaluate a required case.
     Oracle(OracleFailure),
 }
 
-/// The result of successfully minimising a failing [`Case`].
+/// The result of minimising a failing case.
 #[derive(Debug)]
 pub struct MinimiseOutcome {
-    /// The minimised case. Its `seed` is carried over from the original case unchanged
-    /// — provenance only, never used to regenerate it.
+    /// Reduced case.
     pub case: Case,
-    /// The [`FailureSignature`] every accepted shrink preserved, computed from a fresh
-    /// evaluation of the original case.
+    /// Failure category preserved during reduction.
     pub signature: FailureSignature,
-    /// The final case's mismatch, from the oracle evaluation that most recently
-    /// accepted it.
+    /// Mismatch from the last accepted candidate.
     pub mismatch: Mismatch,
-    /// How many shrink passes ran before reaching a fixed point or [`MAX_PASSES`].
+    /// Number of reduction passes run.
     pub passes: u32,
-    /// Whether minimisation reached a true fixed point (the last pass made no further
-    /// change), as opposed to being cut off by the [`MAX_PASSES`] cap while still
-    /// changing.
+    /// Whether a pass completed without changing the case.
     pub reached_fixed_point: bool,
-    /// The total number of candidates evaluated by the oracle (successful, failed, and
-    /// skipped alike).
+    /// Number of candidates evaluated.
     pub candidates_tried: u64,
-    /// Terse, single-line messages for candidates the oracle could not evaluate
-    /// (non-fatal [`OracleFailure`]s), in the order they occurred.
+    /// Non-fatal oracle errors encountered.
     pub skips: Vec<String>,
 }
 
-/// Minimises `case` against `oracle`, shrinking it while preserving its
-/// [`FailureSignature`]. See the module docs for the rules this applies, in order, each
-/// pass.
-///
-/// The very first thing this does is re-evaluate `case` itself, fresh, to establish the
-/// baseline signature — a checked-in `capture.json` may predate a harness or Chrome
-/// change, so the signature to preserve always comes from a live re-capture rather than
-/// from whatever originally flagged this case as failing.
+/// Reduces `case` while preserving its initial failure category.
 pub fn minimise(case: &Case, oracle: &mut dyn Oracle) -> Result<MinimiseOutcome, MinimiseError> {
     let baseline_mismatch = match oracle.evaluate(case).map_err(MinimiseError::Oracle)? {
         Ok(()) => return Err(MinimiseError::BaselinePasses),
@@ -191,17 +116,8 @@ pub fn minimise(case: &Case, oracle: &mut dyn Oracle) -> Result<MinimiseOutcome,
     })
 }
 
-/// A deterministic content key for `case`, excluding its `seed`: the width plus, per
-/// run, `(font_size, letter_spacing, word_spacing, line_height, text)`. Floats are
-/// rendered via
-/// `Display` (Rust's shortest round-tripping decimal), so two cases with the same
-/// content but different provenance produce the same key.
-///
-/// Used to cache oracle evaluations by content within a minimisation batch, and to
-/// group minimised cases for dedup reporting — both defined in
-/// `parley_glyph_positioning_recorder`, which is the only thing that needs this key to
-/// be *anything* in particular beyond deterministic and content-addressed.
 #[must_use]
+/// Returns a stable key for a case's contents, excluding its seed.
 pub fn case_content_key(case: &Case) -> String {
     let mut key = format!("w={}", case.width);
     for run in &case.runs {
@@ -215,13 +131,6 @@ pub fn case_content_key(case: &Case) -> String {
     key
 }
 
-/// Whether `case` is a legal minimisation candidate: it satisfies every grid, range,
-/// and alphabet invariant [`Case::from_seed`] guarantees for a generated case. Every
-/// rule checks this before ever showing a candidate to the oracle.
-///
-/// `pub(crate)` (rather than private) purely so this module's own tests can assert that
-/// every candidate a rule produces is valid, in addition to wrapping the fake oracle to
-/// assert the same thing from the other side.
 pub(crate) fn is_valid_candidate(case: &Case) -> bool {
     if case.runs.is_empty() {
         return false;
@@ -234,11 +143,6 @@ pub(crate) fn is_valid_candidate(case: &Case) -> bool {
     }
 
     let alphabet = alphabet();
-    // No run may start with a space (matching `generate_run_text`'s `at_run_start`
-    // check, which forbids it unconditionally); no two spaces may be adjacent,
-    // including across a run boundary — tracked the same way generation tracks it, by
-    // carrying `prev_was_space` from one run's last character into the next run's
-    // first.
     let mut prev_was_space = true;
     let mut has_non_space = false;
     for run in &case.runs {
@@ -274,13 +178,6 @@ pub(crate) fn is_valid_candidate(case: &Case) -> bool {
     has_non_space
 }
 
-/// The value the scalar-exact and ladder rules shrink every run's `font_size` toward:
-/// `16.0` if that passes [`valid_font_size`] for the bundled font, else the nearest
-/// [`FONT_SIZE_STEP`]-grid value in range that does, tie-breaking toward the lower
-/// value.
-///
-/// Computed once per [`minimise`] call rather than hardcoded, so this keeps working if
-/// the bundled font ever changes to one for which 16px trips the `FreeType` hack.
 fn target_font_size() -> f32 {
     const PREFERRED: f32 = 16.0;
     if valid_font_size(PREFERRED) {
@@ -316,16 +213,10 @@ fn target_font_size() -> f32 {
         )
 }
 
-/// Collapses `message` to a single line with no repeated whitespace, so a skip record
-/// stays one line no matter what an oracle's failure message looked like.
 fn terse(message: &str) -> String {
     message.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Drives one [`minimise`] call: owns the oracle, the signature every accepted
-/// candidate must preserve, and the running stats. Its rule methods (one per lettered
-/// rule in the module docs) each take the working [`Case`] and mutate it in place on
-/// acceptance.
 struct Minimiser<'o> {
     oracle: &'o mut dyn Oracle,
     baseline: FailureSignature,
@@ -335,15 +226,6 @@ struct Minimiser<'o> {
 }
 
 impl Minimiser<'_> {
-    /// Evaluates `candidate` against the oracle, WITHOUT checking [`is_valid_candidate`]
-    /// first — callers must do that themselves; see [`Self::try_candidate`] for the
-    /// combined check-then-evaluate most rules want.
-    ///
-    /// Returns whether `candidate` preserves [`Self::baseline`]: `Ok(true)` on a
-    /// signature-preserving failure (also updating [`Self::best_mismatch`]), `Ok(false)`
-    /// if it passes or fails with a different signature, and `Err` if a fatal
-    /// [`OracleFailure`] should abort minimisation (a non-fatal one is recorded in
-    /// [`Self::skips`] and treated as `Ok(false)`).
     fn preserves(&mut self, candidate: &Case) -> Result<bool, MinimiseError> {
         self.candidates_tried += 1;
         match self.oracle.evaluate(candidate) {
@@ -367,9 +249,6 @@ impl Minimiser<'_> {
         }
     }
 
-    /// Checks [`is_valid_candidate`] before spending an oracle call, then
-    /// [`Self::preserves`]. Returns `candidate` back if it was valid and
-    /// signature-preserving.
     fn try_candidate(&mut self, candidate: Case) -> Result<Option<Case>, MinimiseError> {
         if !is_valid_candidate(&candidate) {
             return Ok(None);
@@ -381,8 +260,8 @@ impl Minimiser<'_> {
         }
     }
 
-    /// Rule (a): tries `working.width == MAX_CASE_WIDTH_PX` exactly.
     fn width_exact(&mut self, working: &mut Case) -> Result<(), MinimiseError> {
+        // A wider container is simpler here because it removes line breaks.
         if working.width != MAX_CASE_WIDTH_PX {
             let mut candidate = working.clone();
             candidate.width = MAX_CASE_WIDTH_PX;
@@ -393,20 +272,12 @@ impl Minimiser<'_> {
         Ok(())
     }
 
-    /// Rule (b): tries each run's `font_size -> font_size_target`, `letter_spacing ->
-    /// 0.0`, and `word_spacing -> 0.0` exactly, one candidate per `(run, field)` that
-    /// differs from its target.
-    ///
-    /// Does not touch `line_height` — there is no obvious "nicest" absolute-px target
-    /// to snap it to (unlike `0.0` for the spacings), so a minimised case keeps
-    /// whatever `line_height` its originating seed sampled. [`is_valid_candidate`]
-    /// still checks it stays on-grid and positive, since no rule here ever changes it
-    /// away from a value [`Case::from_seed`] already guaranteed valid.
     fn scalar_exacts(
         &mut self,
         working: &mut Case,
         font_size_target: f32,
     ) -> Result<(), MinimiseError> {
+        // Line height has no neutral target comparable to zero spacing or a 16px font.
         for index in 0..working.runs.len() {
             if working.runs[index].font_size != font_size_target {
                 let mut candidate = working.clone();
@@ -437,9 +308,6 @@ impl Minimiser<'_> {
         Ok(())
     }
 
-    /// Rule (c): tries deleting each run outright, ascending by index. A no-op today
-    /// (`MAX_RUNS` is pinned to 1, so there is never a second run to fall back to), but
-    /// implemented so it starts working the moment that pin lifts.
     fn remove_runs(&mut self, working: &mut Case) -> Result<(), MinimiseError> {
         let mut index = 0;
         while index < working.runs.len() {
@@ -448,8 +316,7 @@ impl Minimiser<'_> {
                 candidate.runs.remove(index);
                 if let Some(accepted) = self.try_candidate(candidate)? {
                     *working = accepted;
-                    // A later run just shifted into `index`; try it too before
-                    // advancing.
+                    // The next run shifted into this index.
                     continue;
                 }
             }
@@ -458,9 +325,6 @@ impl Minimiser<'_> {
         Ok(())
     }
 
-    /// Rule (d): chunked ddmin-style character deletion, per run (ascending), on
-    /// `Vec<char>` (never byte-indexed, since a run's text can contain non-ASCII
-    /// alphabet entries).
     fn ddmin_chars(&mut self, working: &mut Case) -> Result<(), MinimiseError> {
         for run_index in 0..working.runs.len() {
             self.ddmin_run(working, run_index)?;
@@ -468,11 +332,8 @@ impl Minimiser<'_> {
         Ok(())
     }
 
-    /// The per-run body of [`Self::ddmin_chars`]: for chunk sizes `ceil(len/2)`, halved
-    /// each round down to `1`, slides a deletion window across the run's characters,
-    /// keeping any deletion that stays valid and signature-preserving without advancing
-    /// past it (so an accepted deletion is immediately retried at the same position).
     fn ddmin_run(&mut self, working: &mut Case, run_index: usize) -> Result<(), MinimiseError> {
+        // Work in characters because the generated alphabet is not ASCII-only.
         let mut chars: Vec<char> = working.runs[run_index].text.chars().collect();
         let mut size = chars.len().div_ceil(2);
         while size >= 1 {
@@ -497,9 +358,6 @@ impl Minimiser<'_> {
         Ok(())
     }
 
-    /// Rule (e): for every scalar not already at its target after rules (a)-(b), runs
-    /// the grid-quantized [`Self::ladder`] in the settled order: `width`, then each
-    /// run's `font_size`, `letter_spacing`, and `word_spacing`.
     fn scalar_ladder(
         &mut self,
         working: &mut Case,
@@ -577,18 +435,6 @@ impl Minimiser<'_> {
         Ok(())
     }
 
-    /// The generic two-stage scalar ladder shared by every [`Self::scalar_ladder`] call:
-    /// shrinks `current` toward `target` on a grid of `steps_per_px` steps per CSS px,
-    /// where `apply(value)` builds the full candidate [`Case`] with that one scalar
-    /// substituted (everything else held at its current value in the working case).
-    ///
-    /// Stage 1 coarsens `current` toward `target` by snapping to ever-finer
-    /// powers-of-two grid boundaries, restarting from the coarsest boundary again after
-    /// every accepted snap (since a snap changes how much distance is left to cover).
-    /// Stage 2 binary-searches the grid between the result (known-preserving) and
-    /// `target` (known non-preserving — an earlier rule this same pass already tried it
-    /// exactly and failed), stepping a probe back toward the preserving side whenever it
-    /// lands on an invalid grid point (e.g. a font size that trips the `FreeType` hack).
     fn ladder<F>(
         &mut self,
         current: f32,
@@ -621,8 +467,7 @@ impl Minimiser<'_> {
         let mut cur_steps = to_steps(current);
         let target_steps = to_steps(target);
 
-        // Stage 1: coarsen toward `target_steps`, restarting from the top on every
-        // acceptance.
+        // Probe progressively finer grid boundaries, restarting after each success.
         loop {
             let distance = target_steps.abs_diff(cur_steps);
             if distance == 0 {
@@ -651,10 +496,9 @@ impl Minimiser<'_> {
             }
         }
 
-        // Stage 2: binary search between `cur_steps` (preserving) and `target_steps`
-        // (known non-preserving).
         let mut lo = cur_steps;
         let mut hi = target_steps;
+        // `lo` preserves the failure; the exact target in `hi` was rejected earlier.
         while hi.abs_diff(lo) > 1 {
             let original_mid = (lo + hi).div_euclid(2);
             let mut mid = original_mid;
@@ -665,9 +509,6 @@ impl Minimiser<'_> {
                 candidate = apply(from_steps(mid));
             }
             if mid == lo {
-                // Every grid point strictly between the original midpoint and `lo` was
-                // invalid: treat the whole probe as a rejection at the point we were
-                // actually asked about.
                 hi = original_mid;
             } else if self.preserves(&candidate)? {
                 lo = mid;
@@ -679,10 +520,6 @@ impl Minimiser<'_> {
         Ok(from_steps(lo))
     }
 
-    /// Rule (f): per run (ascending), per character position (ascending), tries
-    /// replacing that character with the lowest [`alphabet`] entry that stays valid and
-    /// signature-preserving — the global minimum for that position, not just a local
-    /// decrement. Spaces have no alphabet index and are left to [`Self::ddmin_chars`].
     fn char_scan(&mut self, working: &mut Case) -> Result<(), MinimiseError> {
         let alphabet = alphabet();
         for run_index in 0..working.runs.len() {
@@ -692,8 +529,6 @@ impl Minimiser<'_> {
                 if ch == ' ' {
                     continue;
                 }
-                // Scanning above the current character is provably wasted: it already
-                // preserves the signature and is, by construction, not lower.
                 let ceiling = alphabet.binary_search(&ch).unwrap_or(alphabet.len());
                 let scan_limit = ceiling.min(CHAR_SCAN_CAP);
                 for &candidate_char in &alphabet[..scan_limit] {
@@ -713,14 +548,11 @@ impl Minimiser<'_> {
     }
 }
 
-/// Returns the largest power of two that is `<= n`. `n` must be at least `1`.
 fn largest_pow2_leq(n: u64) -> u64 {
     debug_assert!(n >= 1, "largest_pow2_leq is only ever called with n >= 1");
     1_u64 << n.ilog2()
 }
 
-/// Returns the multiple of `k` closest to `cur`, strictly on the side of `cur` toward
-/// `target`, clamped so it never passes `target`. Requires `cur != target` and `k >= 1`.
 fn snap_toward(cur: i64, target: i64, k: i64) -> i64 {
     debug_assert!(
         cur != target,
@@ -748,8 +580,6 @@ mod tests {
     use crate::generate::Run;
     use crate::glyph_output::{PositionedGlyph, Style};
 
-    /// A minimal, valid two-character `Case`: short enough that tests run fast, but
-    /// with enough characters that ddmin/char-scan rules have something to do.
     fn case(text: &str, width: f32, font_size: f32) -> Case {
         Case {
             seed: 0,
@@ -764,7 +594,6 @@ mod tests {
         }
     }
 
-    /// A `Mismatch::GlyphCount` for use as a stand-in failure.
     fn glyph_count_mismatch() -> Mismatch {
         Mismatch::GlyphCount {
             parley: 1,
@@ -772,8 +601,6 @@ mod tests {
         }
     }
 
-    /// A `Mismatch::Glyphs` with x-drift, for tests that need a *different* signature
-    /// than [`glyph_count_mismatch`].
     fn glyphs_mismatch() -> Mismatch {
         let style = Style {
             postscript_name: "Roboto-Regular".to_string(),
@@ -802,8 +629,6 @@ mod tests {
         }
     }
 
-    /// Builds an [`Oracle`] closure from a predicate on the case's text: fails (with
-    /// [`glyph_count_mismatch`]) whenever `pred` returns `true`, else passes.
     fn fails_when(
         mut pred: impl FnMut(&Case) -> bool + 'static,
     ) -> impl FnMut(&Case) -> Result<Result<(), Mismatch>, OracleFailure> {
@@ -846,7 +671,6 @@ mod tests {
     #[test]
     fn ddmin_reduces_to_a_single_essential_character() {
         let letters = alphabet();
-        // Pick a character that is not the essential one, to build filler text with.
         let filler = *letters
             .iter()
             .find(|&&c| c != 'e')
@@ -855,7 +679,6 @@ mod tests {
         let original = case(&text, MAX_CASE_WIDTH_PX, 16.0);
 
         let mut oracle = fails_when(|c: &Case| c.runs[0].text.contains('e'));
-        // 'e' has to actually be present for this predicate to ever fail — insert one.
         let mut original = original;
         original.runs[0].text.push('e');
 
@@ -872,8 +695,6 @@ mod tests {
 
     #[test]
     fn exact_targets_are_reached_when_the_predicate_ignores_them() {
-        // A predicate that only cares about the text, so width/font_size/spacings are
-        // all free to snap to their exact targets.
         let original = case("ee", 500.0, 20.0);
         let mut oracle = fails_when(|c: &Case| c.runs[0].text.contains('e'));
 
@@ -908,9 +729,6 @@ mod tests {
         );
     }
 
-    /// Mirrors the `width < 700.0` predicate from
-    /// [`ladder_shrinks_width_toward_but_not_past_a_threshold`], kept as a standalone
-    /// function so the assertion above reads as "still fails", not a duplicated literal.
     fn oracle_predicate_width_fails(width: f32) -> bool {
         width < 700.0
     }
@@ -936,8 +754,6 @@ mod tests {
 
     #[test]
     fn a_different_failure_signature_does_not_count_as_preserving() {
-        // The baseline fails with GlyphCount; any candidate with shorter text instead
-        // fails with a Glyphs mismatch, which must not be accepted as preserving.
         let original = case("eeee", MAX_CASE_WIDTH_PX, 16.0);
         let mut oracle = move |c: &Case| {
             if c.runs[0].text.len() < 4 {
@@ -1032,8 +848,6 @@ mod tests {
     #[test]
     fn char_scan_finds_the_lowest_satisfying_character_and_respects_the_cap() {
         let letters = alphabet();
-        // A character comfortably above the very start of the alphabet, so there is
-        // room for the scan to find something lower than it.
         let original_char = letters[letters.len() / 2];
         let threshold_index = letters.len() / 4;
         let threshold_char = letters[threshold_index];
@@ -1077,10 +891,6 @@ mod tests {
 
     #[test]
     fn pass_count_is_capped() {
-        // A predicate that keeps the case failing regardless of width, but where the
-        // width ladder can always find one more grid step to try moving on any given
-        // pass (since the predicate never lets width settle at an exact target), so the
-        // fixed-point loop is expected to run out the clock rather than converge.
         let original = case("ee", MAX_CASE_WIDTH_PX, 16.0);
         let mut oracle = fails_when(|c: &Case| c.width > 1.0);
 

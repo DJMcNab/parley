@@ -1,47 +1,28 @@
 // Copyright 2026 the Parley Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! A coarse, deliberately lossy projection of a [`Mismatch`], used by the failure
-//! minimiser (`src/minimise.rs`) to check that a shrunk candidate still fails "the same
-//! way" as the case it was shrunk from.
-//!
-//! A [`FailureSignature`] keeps only the variant (`GlyphCount`, `Fragmentation` or
-//! `Glyphs`) and, for `Glyphs`, the `same_multiset` flag plus which axes drift — a
-//! handful of coarse buckets. It deliberately excludes fragile detail (diff counts, magnitudes, indices,
-//! glyph ids): comparing on those would make minimisation slide from the bug it started
-//! shrinking into an unrelated one, or flip a `Glyphs` failure into `GlyphCount` via an
-//! incidental line-count change, rather than shrinking the original failure.
-
 use crate::compare::Mismatch;
 
-/// A coarse classification of a [`Mismatch`]. See the module docs for why it is this
-/// coarse.
+/// The mismatch properties preserved while minimising a case.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FailureSignature {
-    /// Parley and Chrome produced different numbers of glyphs.
+    /// Glyph counts differ.
     GlyphCount,
-    /// Parley and Chrome produced the same glyphs but split them into fragments
-    /// differently.
-    ///
-    /// Kept distinct from `Glyphs` because it is a structural disagreement about how
-    /// the line was divided, not a positioning one — letting minimisation slide between
-    /// the two would shrink one failure into a different bug.
+    /// Fragment shapes differ.
     Fragmentation,
-    /// Parley and Chrome produced the same number of glyphs, but at least one pair
-    /// disagreed.
+    /// Corresponding glyphs differ.
     Glyphs {
-        /// Whether re-pairing both sides by position instead of by emission order
-        /// removes the mismatch — see [`Mismatch::Glyphs`]'s `same_multiset`.
+        /// Whether sorting by position makes the outputs equal.
         same_multiset: bool,
-        /// Whether any diff's `dx` exceeds its `x_tolerance`.
+        /// Whether any x difference exceeds its tolerance.
         x_drift: bool,
-        /// Whether any diff's `dy` exceeds its `y_tolerance`.
+        /// Whether any y difference exceeds its tolerance.
         y_drift: bool,
     },
 }
 
 impl FailureSignature {
-    /// Projects a [`Mismatch`] down to its [`FailureSignature`].
+    /// Extracts a signature from a mismatch.
     #[must_use]
     pub fn of(mismatch: &Mismatch) -> Self {
         match mismatch {
@@ -61,8 +42,6 @@ impl FailureSignature {
 }
 
 impl std::fmt::Display for FailureSignature {
-    /// Formats as a single token with no spaces or newlines, so it can sit inline in a
-    /// one-line note field (see `Golden::note`).
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::GlyphCount => f.write_str("glyph-count"),
@@ -95,8 +74,6 @@ mod tests {
     use crate::compare::GlyphDiff;
     use crate::glyph_output::{PositionedGlyph, Style};
 
-    /// Builds a `GlyphDiff` with the given `dx`/`dy`/tolerances; every other field is an
-    /// arbitrary fixed value, since [`FailureSignature::of`] only looks at those four.
     fn diff(dx: f64, dy: f64, x_tolerance: f64, y_tolerance: f64) -> GlyphDiff {
         let style = Style {
             postscript_name: "Roboto-Regular".to_string(),

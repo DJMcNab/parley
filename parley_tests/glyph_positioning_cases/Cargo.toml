@@ -1,6 +1,6 @@
 [package]
 name = "parley_glyph_positioning_cases"
-description = "Seeded random test cases for glyph-positioning Chrome-parity testing"
+description = "Shared cases and golden output for glyph-positioning tests"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

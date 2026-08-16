@@ -1,27 +1,11 @@
 // Copyright 2026 the Parley Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Checks that Parley's glyph positions match Chrome's, against the checked-in golden
-//! corpus under `tests/glyph_positioning/`.
+//! Compares Parley with checked-in Chromium glyph-positioning snapshots.
 //!
-//! No Docker, network, or `chromedriver` dependency: every golden file already holds
-//! both the [`Case`](parley_glyph_positioning_cases::Case) that produced it and
-//! Chrome's recorded output, so this test only needs to lay the case out with Parley
-//! and compare. See `doc/glyph-positioning-chrome-parity.md` and its Phase 5 doc.
-//!
-//! Four directories are walked:
-//!
-//! - `handwritten/`, `regressions/`, `generated/` — expected to **pass**. A generated
-//!   case must have been curated to avoid every known bug (see the Phase 5 doc for
-//!   how the initial corpus was built); a failure here is a real regression.
-//! - `known_failing/` — expected to **still fail**. These are checked-in repros of
-//!   real, tracked bugs (each file's `note` says which). Asserting the failure rather
-//!   than skipping the case means a fix shows up as a test failure telling you to
-//!   promote the case out of `known_failing/`, instead of it going unnoticed.
-//!
-//! Every case in every directory runs regardless of earlier failures, and all
-//! unexpected results are reported together at the end, so a CI run surfaces every
-//! broken case at once rather than only the first one alphabetically.
+//! Run with `cargo test -p parley_tests --test tests glyph_positioning`.
+//! Snapshots in `known_failing` must continue to fail; move one to `regressions` when
+//! its underlying bug is fixed.
 
 use std::path::{Path, PathBuf};
 
@@ -29,7 +13,6 @@ use parley::{FontContext, LayoutContext};
 use parley_glyph_positioning_cases::{Golden, compare};
 use parley_glyph_positioning_extract::{font_context, layout, parley_output};
 
-/// `tests/glyph_positioning/`, the checked-in golden corpus.
 fn corpus_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/glyph_positioning")
 }
@@ -62,9 +45,6 @@ fn glyph_positioning_matches_chrome() {
     );
 }
 
-/// Lays out `path`'s case with Parley and compares it against the golden's recorded
-/// Chrome output, returning `Some(message)` if the result wasn't the one expected for
-/// its directory (`expect_failure` is true only for `known_failing/`).
 fn check(
     path: &Path,
     font_cx: &mut FontContext,
@@ -90,9 +70,6 @@ fn check(
     }
 }
 
-/// Every `*.txt` golden file directly under `root/dir`, sorted. A missing directory
-/// yields no files rather than an error, since `handwritten/` and `regressions/` may
-/// be empty.
 fn golden_files(root: &Path, dir: &str) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(root.join(dir)) else {
         return Vec::new();

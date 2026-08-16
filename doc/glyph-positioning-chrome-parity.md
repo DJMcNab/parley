@@ -236,30 +236,16 @@ obscured by a large style/grammar surface.
   - Pairing is emission order, index by index, with a sorted re-check on the
     failure path only, so a paint-order difference reports as such rather than
     as a wall of position diffs.
-- **Golden CI set**: hand-written cases + promoted fuzz regressions + ~50
-  deterministically-seeded generated cases. **Phase 1 correction (supersedes
-  the original seed-only scheme):** *every* golden stores the **full `Case`**
-  alongside the Chrome output, in one uniform format across all three
-  categories; the seed is provenance only and is never regenerated from at test
-  time. Seed-only saves ~13% (a `Case` is ~550 bytes against ~4 KB of output
-  that must be committed regardless) while creating a sharp failure mode: any
-  change to `from_seed` silently repoints every golden at a different case
-  while the suite keeps passing. **Phase 4 correction:** handwritten cases have
-  no separate source of truth — they are authored *as* golden files with an
-  empty output section (`styles 0` / `fragments 0`) and filled in by
-  `regenerate_goldens`, which re-records every existing file in place. That
-  gives one uniform rule across all three directories, and promoted fuzz
-  regressions already arrive in exactly that shape. The format gains an optional
-  `note <text>` line so a handwritten case can say why it exists.
+- **Golden CI set**: generated, handwritten, and regression cases must match
+  Chromium. `known_failing` contains tracked bugs and must continue to differ.
+  Every golden stores its complete `Case`; its seed is provenance and is not used
+  to regenerate the input during tests.
 - **Serialization**: goldens use a **hand-rolled compact text format**, per the
   precedent in `linebreaking_matches_chrome.rs`. Neither Phase 1 crate takes a
   serde dependency; `serde_json` is confined to the native-only, matrix-excluded
   recorder, which needs it for `skp_parser` output anyway.
-- **Normal CI never touches Docker**: the `#[test]` in `parley_tests`
-  compares live Parley output against checked-in golden JSON only. Docker/
-  Chromium/`chromedriver`/`skp_parser` are only exercised by (a) the golden-
-  regeneration binary (developer-run, offline) and (b) the fuzz loop
-  (manual/scheduled, not part of PR-gating CI).
+- **Normal CI never touches Docker**: the test compares Parley's current output
+  with checked-in goldens. Docker and Chromium are used only to record new output.
 - **Fuzzing model**: a long-running randomized differential-testing loop
   (not `cargo-fuzz`/libFuzzer — per-case Chromium round-trips are far too
   slow for coverage-guided fuzzing), reusing one browser session across
@@ -488,25 +474,8 @@ and is what allows the comparison predicate to drop its accumulation term.
 
 #### Phase 5 — DONE
 
-**Fully recorded in
-[`glyph-positioning-chrome-parity-phase5.md`](./glyph-positioning-chrome-parity-phase5.md)
-— read it for what actually happened**, including a significant correction to
-Phase 4's findings: the decomposition-cluster bug (found there via the letter/
-word-spacing workaround) turned out to fire on ~86% of generated cases, not the
-one anecdotal case Phase 4's smaller fuzzing sample suggested. That reshaped the
-initial corpus.
-
-In brief: `parley_tests/tests/glyph_positioning.rs` is a single `#[test]`,
-registered in `tests/mod.rs`, with no container/network/Docker dependency. It
-walks four directories under `tests/tests/glyph_positioning/` —
-`handwritten/`, `regressions/`, `generated/` (expected to pass) and a new
-**`known_failing/`** (checked-in repros of real, tracked bugs, asserted to
-*keep failing* so a fix shows up as a test failure telling you to promote the
-case out). B8 is landed. Given the decomposition bug's real prevalence, the
-initial corpus is a curated **15 passing + 15 known-failing** cases rather
-than the originally planned 50, and `regenerate_goldens` no longer
-auto-generates new `generated/` seeds from a blind range (unsound at this
-failure rate) — it only re-records whatever is already on disk.
+See the [snapshot test guide](./glyph-positioning-chrome-parity-phase5.md) for how
+to run the test and maintain its corpus.
 
 ### Bring-up step B13 — fragment-origin snapping
 
@@ -553,7 +522,7 @@ Three things in the decisions above are superseded by it:
 
 ## Verification
 
-- `cargo test -p parley_tests glyph_positioning` passes using only checked-in
+- `cargo test -p parley_tests --test tests glyph_positioning` passes using checked-in
   golden data, no network/docker access required, on a clean checkout.
 - `cargo clippy --workspace --all-features` (native) is clean; wasm/android
   matrix jobs still succeed with the recorder crate excluded.

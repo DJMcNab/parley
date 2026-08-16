@@ -1,52 +1,21 @@
 // Copyright 2026 the Parley Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The golden output schema, a builder for constructing it, and a hand-rolled compact
-//! text format for storing a [`Case`] alongside its recorded output.
-//!
-//! See "Golden output schema" and "File format" in
-//! `doc/glyph-positioning-chrome-parity-phase1.md`. No `serde` dependency is taken —
-//! see that section for why.
-
 use std::fmt::Write as _;
 
 use crate::generate::{Case, Run};
 
-/// The deduplicated glyph output of laying out a [`Case`], from either Parley or
-/// Chrome.
-///
-/// **Positions are stored per fragment, not absolutely.** A *fragment* is the unit
-/// Blink positions as a whole — one span's glyphs on one line — and both sides record
-/// the fragment's origin plus each glyph's offset from it. Two things depend on that
-/// split:
-///
-/// - Blink snaps every fragment origin after the first onto `LayoutUnit`'s 1/64 px
-///   grid, so the origin is where the two sides can legitimately differ while every
-///   glyph within a fragment still has to agree exactly.
-/// - `skp_parser` serialises the fragment origin and the glyph's offset as two
-///   *separate* 6-significant-figure numbers, so the error floor on an absolute
-///   position is the sum of their two half-ULPs. Storing only the sum throws away the
-///   information needed to compute that floor.
-///
-/// **There is no line concept**: Chrome exposes a true per-glyph `y`, so no line
-/// grouping needs inferring, and the schema survives future vertical-align work where
-/// glyphs on one line may sit on different baselines. Line grouping may be re-derived
-/// best-effort in failure *reporting*, never in this schema.
+/// Positioned glyphs emitted by a layout engine.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GlyphOutput {
-    /// The distinct styles referenced by [`Self::fragments`], in first-appearance
-    /// order.
+    /// Styles referenced by fragments.
     pub styles: Vec<Style>,
-    /// The fragments, in the order they were produced.
+    /// Glyph fragments in emission order.
     pub fragments: Vec<Fragment>,
 }
 
 impl GlyphOutput {
-    /// The glyphs of every fragment, at absolute positions, in emission order.
-    ///
-    /// This is the flat view the comparison pairs on and the report generator draws;
-    /// the stored form is [`Self::fragments`], since the absolute position alone can't
-    /// express either the snapping or the serialisation floor (see the type docs).
+    /// Returns all glyphs with fragment origins applied.
     #[must_use]
     pub fn glyphs(&self) -> Vec<PositionedGlyph> {
         self.fragments
@@ -62,7 +31,7 @@ impl GlyphOutput {
             .collect()
     }
 
-    /// How many glyphs this output holds in total.
+    /// Returns the total number of glyphs.
     #[must_use]
     pub fn glyph_count(&self) -> usize {
         self.fragments
@@ -71,8 +40,7 @@ impl GlyphOutput {
             .sum()
     }
 
-    /// The number of glyphs in each fragment, in order — this output's *shape*, which
-    /// the comparison checks before it looks at any position.
+    /// Returns the glyph count of each fragment.
     #[must_use]
     pub fn shape(&self) -> Vec<usize> {
         self.fragments
@@ -82,71 +50,53 @@ impl GlyphOutput {
     }
 }
 
-/// A style referenced by one or more [`Fragment`]s.
+/// Font properties recorded for a fragment.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Style {
-    /// The selected font's PostScript name (`name` table entry, ID 6).
+    /// Font PostScript name.
     pub postscript_name: String,
-    /// The (already Chromium-quantized) font size, in CSS px.
+    /// Font size in CSS pixels.
     pub font_size: f32,
 }
 
-/// One span's glyphs on one line: the unit Blink positions as a whole.
-///
-/// Blink lays a line out by placing each fragment at the previous one's ceil-snapped
-/// end (`ShapeResult::SnappedWidth()`, a `LayoutUnit::FromFloatCeil`), so
-/// [`Self::origin_x`] is where the 1/64 px grid enters the comparison. Within a
-/// fragment, glyph offsets are unrounded on both sides.
+/// A run of glyphs sharing an origin and style.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Fragment {
-    /// The fragment's inline origin, in CSS px. Every glyph's [`LocalGlyph::x`] is
-    /// relative to this.
-    ///
-    /// f64, unlike the glyph offsets, because an origin is an *accumulator*: Blink
-    /// sums snapped fragment widths across a line, Parley sums advances in f64 for the
-    /// same reason, and Chrome's is a decimal this crate must not re-round. Narrowing
-    /// it to f32 costs half an f32 ULP — around 8e-6 px at the widths the corpus
-    /// reaches, which is a sixth of the serialisation floor and enough on its own to
-    /// push a matching case over it. A glyph offset is not an accumulator: it is one
-    /// shaped value, f32-native on both sides, so it stays f32.
+    /// Horizontal origin in CSS pixels.
     pub origin_x: f64,
-    /// The fragment's baseline, in CSS px. Every glyph's [`LocalGlyph::y`] is relative
-    /// to this. f64 for the same reason as [`Self::origin_x`].
+    /// Vertical origin in CSS pixels.
     pub origin_y: f64,
-    /// Index into the owning [`GlyphOutput`]'s [`GlyphOutput::styles`].
+    /// Index into [`GlyphOutput::styles`].
     pub style: u16,
-    /// The fragment's glyphs, in emission order.
+    /// Glyphs positioned relative to this fragment's origin.
     pub glyphs: Vec<LocalGlyph>,
 }
 
-/// A glyph positioned relative to its owning [`Fragment`]'s origin.
+/// A glyph positioned relative to its fragment.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LocalGlyph {
-    /// The glyph ID, in the selected font.
+    /// Font glyph identifier.
     pub id: u32,
-    /// Offset from [`Fragment::origin_x`], in CSS px.
+    /// Horizontal offset in CSS pixels.
     pub x: f32,
-    /// Offset from [`Fragment::origin_y`], in CSS px.
+    /// Vertical offset in CSS pixels.
     pub y: f32,
 }
 
-/// A single glyph at an absolute position — the derived view [`GlyphOutput::glyphs`]
-/// produces, never the stored one.
+/// A glyph with an absolute position.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PositionedGlyph {
-    /// The glyph ID, in the selected font.
+    /// Font glyph identifier.
     pub id: u32,
-    /// Absolute x position, in CSS px. f64, so summing the origin and the offset does
-    /// not re-round what [`Fragment::origin_x`] is f64 to preserve.
+    /// Horizontal position in CSS pixels.
     pub x: f64,
-    /// Absolute y position, in CSS px. f64, as [`Self::x`].
+    /// Vertical position in CSS pixels.
     pub y: f64,
-    /// Index into the owning [`GlyphOutput`]'s [`GlyphOutput::styles`].
+    /// Index into the output's style table.
     pub style: u16,
 }
 
-/// Incrementally builds a [`GlyphOutput`], deduplicating styles in first-appearance
-/// order.
+/// Builds a [`GlyphOutput`] while deduplicating styles.
 #[derive(Clone, Debug, Default)]
 pub struct GlyphOutputBuilder {
     styles: Vec<Style>,
@@ -154,8 +104,7 @@ pub struct GlyphOutputBuilder {
 }
 
 impl GlyphOutputBuilder {
-    /// Returns the index of `style` in the (deduplicated) style table, inserting it if
-    /// this is the first time it's been seen.
+    /// Adds or finds `style` and returns its table index.
     pub fn style_index(&mut self, style: Style) -> u16 {
         if let Some(index) = self.styles.iter().position(|existing| *existing == style) {
             u16::try_from(index).expect("style table stays well under u16::MAX entries")
@@ -166,7 +115,7 @@ impl GlyphOutputBuilder {
         }
     }
 
-    /// Starts a new fragment. Subsequent [`Self::push_glyph`] calls append to it.
+    /// Starts a fragment receiving subsequent glyphs.
     pub fn begin_fragment(&mut self, origin_x: f64, origin_y: f64, style: u16) {
         self.fragments.push(Fragment {
             origin_x,
@@ -176,11 +125,11 @@ impl GlyphOutputBuilder {
         });
     }
 
-    /// Appends a glyph, at an offset from the current fragment's origin.
+    /// Adds a glyph to the current fragment.
     ///
     /// # Panics
     ///
-    /// If no fragment has been started with [`Self::begin_fragment`].
+    /// Panics if [`Self::begin_fragment`] has not been called.
     pub fn push_glyph(&mut self, id: u32, x: f32, y: f32) {
         self.fragments
             .last_mut()
@@ -189,11 +138,7 @@ impl GlyphOutputBuilder {
             .push(LocalGlyph { id, x, y });
     }
 
-    /// Finishes building, returning the completed [`GlyphOutput`].
-    ///
-    /// Fragments that ended up with no glyphs are dropped: an empty fragment has no
-    /// position to compare and would only make the two sides' shapes disagree for a
-    /// reason neither side can act on.
+    /// Finishes the output, discarding empty fragments.
     #[must_use]
     pub fn build(mut self) -> GlyphOutput {
         self.fragments
@@ -205,27 +150,18 @@ impl GlyphOutputBuilder {
     }
 }
 
-/// A golden test fixture: the full [`Case`] that produced some output, alongside that
-/// output.
-///
-/// Every golden — handwritten, promoted-regression, or generated — stores the full
-/// `Case`, not just its seed; the seed is provenance only. See "Golden CI set" in
-/// `doc/glyph-positioning-chrome-parity.md` for why.
+/// A test case and its recorded reference output.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Golden {
-    /// The case that was laid out.
+    /// Input case.
     pub case: Case,
-    /// Why this golden exists, for a case authored by hand rather than generated.
-    ///
-    /// The format has no comments, so this is the only place a handwritten case can
-    /// say what it is for. `regenerate_goldens` preserves it when it re-records a file.
+    /// Optional provenance or known-failure note.
     pub note: Option<String>,
-    /// The recorded output (Chrome's, for a checked-in golden; Parley's, when
-    /// comparing).
+    /// Recorded Chromium output.
     pub output: GlyphOutput,
 }
 
-/// An error parsing a [`Golden`] from its text format.
+/// An error parsing a golden file.
 #[derive(Debug)]
 pub struct ParseGoldenError {
     message: String,
@@ -246,13 +182,7 @@ fn parse_error(message: impl Into<String>) -> ParseGoldenError {
 }
 
 impl Golden {
-    /// Serializes this golden to the hand-rolled compact text format described in
-    /// "File format" in the Phase 1 doc.
-    ///
-    /// This is a line-oriented format. Header lines are whitespace-separated fields;
-    /// a run's or style's text/name payload is never escaped, since the sampling
-    /// alphabet excludes every control character, so it's written verbatim on its own
-    /// line (never trimmed when read back).
+    /// Serializes this golden file.
     #[must_use]
     pub fn write(&self) -> String {
         let mut out = String::new();
@@ -293,7 +223,7 @@ impl Golden {
         out
     }
 
-    /// Parses a [`Golden`] written by [`Self::write`].
+    /// Parses a golden file.
     pub fn parse(text: &str) -> Result<Self, ParseGoldenError> {
         let mut lines = text.lines().peekable();
 
@@ -400,7 +330,6 @@ impl Golden {
     }
 }
 
-/// Parses a `<tag> <value>` line, requiring the tag to match `tag`.
 fn parse_tagged_line<T: std::str::FromStr>(
     line: Option<&str>,
     tag: &str,
@@ -416,8 +345,6 @@ fn parse_tagged_line<T: std::str::FromStr>(
         .map_err(|_| parse_error(format!("invalid value for `{tag}`: {value:?}")))
 }
 
-/// Parses the next whitespace-separated field from `fields`, tagging any error with
-/// `field_name`.
 fn parse_field<T: std::str::FromStr>(
     fields: &mut std::str::Split<'_, char>,
     field_name: &str,
