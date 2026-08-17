@@ -5,10 +5,11 @@
 //!
 //! The driver never runs `docker run` or `docker build`: `container/run.sh` starts the
 //! container (see `doc/glyph-positioning-recorder-agent.md`) and this connects to it,
-//! configured entirely by [`Config`]'s two URLs. Everything other than the `WebDriver`
+//! configured entirely by [`Config`]'s service URLs. Everything other than the `WebDriver`
 //! session itself — font upload, SKP listing/fetch/cleanup, `skp_parser` invocation —
 //! goes through [`crate::agent::AgentClient`] rather than a mount or `docker exec`.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use fantoccini::wd::TimeoutConfiguration;
@@ -48,11 +49,13 @@ const CHROME_ARGS: &[&str] = &[
 /// every failure in a fuzz run.
 const SCRIPT_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Where the driver finds the container: two URLs, and nothing else.
+static NEXT_CAPTURE_ID: AtomicU64 = AtomicU64::new(0);
+
+/// Where the driver and the browser find the container services.
 ///
 /// No container name, no mount pairs, no `docker` on this path at runtime — every
-/// non-`WebDriver` transport goes through the agent at [`Config::agent`]. Both fields
-/// are env-overridable but neither is required: the defaults match
+/// non-`WebDriver` transport goes through the agent at [`Config::agent`]. All fields
+/// are env-overridable but none is required: the defaults match
 /// `container/run.sh`'s published ports.
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -60,6 +63,13 @@ pub struct Config {
     pub webdriver: String,
     /// The in-container agent's base URL (`PARLEY_GLYPH_AGENT`).
     pub agent: String,
+    /// The agent URL as seen by Chrome inside the container
+    /// (`PARLEY_GLYPH_BROWSER_AGENT`).
+    ///
+    /// This is normally the same as [`Self::agent`]. Keeping it separate lets an
+    /// additional container publish its agent on a different host port while Chrome
+    /// continues to use the fixed container-local port.
+    pub browser_agent: String,
 }
 
 impl Config {
@@ -69,6 +79,7 @@ impl Config {
         Self {
             webdriver: optional_var("PARLEY_GLYPH_WEBDRIVER", "http://127.0.0.1:9515"),
             agent: optional_var("PARLEY_GLYPH_AGENT", "http://127.0.0.1:9516"),
+            browser_agent: optional_var("PARLEY_GLYPH_BROWSER_AGENT", "http://127.0.0.1:9516"),
         }
     }
 }
@@ -106,7 +117,13 @@ impl Recorder {
     /// Uploads the registered fonts, opens a `WebDriver` session, navigates to the
     /// agent-served harness page, and runs `initHarness`.
     pub async fn attach(config: Config) -> Result<Self> {
-        let agent = AgentClient::new(&config.agent);
+        let capture_id = format!(
+            "capture-{}-{}",
+            std::process::id(),
+            NEXT_CAPTURE_ID.fetch_add(1, Ordering::Relaxed)
+        );
+        let agent = AgentClient::new(&config.agent, capture_id);
+        agent.init_capture()?;
         for font in FONTS {
             agent
                 .upload_harness(&harness::font_file_name(font.family), font.bytes)
@@ -135,6 +152,7 @@ impl Recorder {
         };
         if let Err(error) = recorder.init_session().await {
             let _ = recorder.client.close().await;
+            let _ = recorder.agent.clear_skps();
             return Err(error);
         }
         Ok(recorder)
@@ -152,11 +170,9 @@ impl Recorder {
             .set_window_size(harness::VIEWPORT_WIDTH, harness::VIEWPORT_HEIGHT)
             .await?;
 
-        // Derived from the agent URL: Chrome loads the harness page from the agent
-        // itself, so the two are always the same host.
         let url = format!(
             "{}/harness/harness.html",
-            self.config.agent.trim_end_matches('/')
+            self.config.browser_agent.trim_end_matches('/')
         );
         self.client
             .goto(&url)
@@ -175,13 +191,28 @@ impl Recorder {
 
     /// Renders `case` and returns what Chrome painted.
     pub async fn capture(&mut self, case: &Case) -> Result<Recording> {
+        self.capture_impl(case, true).await
+    }
+
+    /// Renders `case` and returns only the parsed glyph output.
+    ///
+    /// The minimiser calls this path thousands of times and never writes raw capture
+    /// artifacts, so it avoids fetching the full SKP bytes from the agent.
+    pub async fn capture_output(&mut self, case: &Case) -> Result<GlyphOutput> {
+        Ok(self.capture_impl(case, false).await?.output)
+    }
+
+    async fn capture_impl(&mut self, case: &Case, fetch_raw_skp: bool) -> Result<Recording> {
         self.agent.clear_skps()?;
 
         self.execute_harness(
             "parleyHarness.run(
-                 () => parleyHarness.renderAndCapture(arguments[0]),
-                 arguments[1])",
-            vec![harness::payload(case)],
+                 () => parleyHarness.renderAndCapture(arguments[0], arguments[1]),
+                 arguments[2])",
+            vec![
+                harness::payload(case),
+                serde_json::Value::String(self.agent.capture_id().to_string()),
+            ],
         )
         .await
         .map_err(|error| format!("renderAndCapture: {error}"))?;
@@ -215,7 +246,11 @@ impl Recorder {
             }
         };
 
-        let skp_bytes = self.agent.fetch_skp(&name)?;
+        let skp_bytes = if fetch_raw_skp {
+            self.agent.fetch_skp(&name)?
+        } else {
+            Vec::new()
+        };
         let json = self.agent.fetch_commands(&name)?;
         let capture = skp_json::Capture::parse(&json)?;
 
@@ -262,8 +297,10 @@ impl Recorder {
 
     /// Closes the session.
     pub async fn close(self) -> Result<()> {
-        self.client.close().await?;
-        Ok(())
+        let browser_result = self.client.close().await;
+        let cleanup_result = self.agent.clear_skps();
+        browser_result?;
+        cleanup_result
     }
 }
 
@@ -298,6 +335,32 @@ pub async fn capture_with_retry(
 
     recorder
         .capture(case)
+        .await
+        .map_err(|second| format!("{first}; and again after recycling: {second}").into())
+}
+
+/// Output-only counterpart to [`capture_with_retry`] for the minimiser.
+pub async fn capture_output_with_retry(
+    recorder: &mut Recorder,
+    config: &Config,
+    case: &Case,
+) -> Result<GlyphOutput> {
+    let first = match recorder.capture_output(case).await {
+        Ok(output) => return Ok(output),
+        Err(error) => error,
+    };
+    eprintln!("capture failed ({first}); recycling the session and retrying once");
+
+    let fresh = Recorder::attach(config.clone())
+        .await
+        .map_err(|error| -> crate::Error {
+            format!("{first}; and the session would not reopen: {error}").into()
+        })?;
+    let previous = std::mem::replace(recorder, fresh);
+    let _ = previous.close().await;
+
+    recorder
+        .capture_output(case)
         .await
         .map_err(|second| format!("{first}; and again after recycling: {second}").into())
 }

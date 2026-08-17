@@ -4,8 +4,8 @@
 //! Turning Skia's own `skp_parser` draw-command dump into the shared golden schema.
 //!
 //! **Pure parsing only.** `skp_parser` itself now runs inside the container, invoked
-//! over HTTP by [`crate::agent::AgentClient`] (`GET /skp/<name>/commands` and
-//! `GET /skp/<name>/typeface`); this module never shells out to anything. See
+//! over HTTP by [`crate::agent::AgentClient`] (`GET /capture/<id>/<name>/commands` and
+//! `GET /capture/<id>/<name>/typeface`); this module never shells out to anything. See
 //! `doc/glyph-positioning-recorder-agent.md`.
 //!
 //! **There is no transform stack.** Phase 0 found that `Save`/`SaveLayer`/`Restore`/
@@ -359,7 +359,7 @@ fn string_field(object: &Object, name: &str, what: &str) -> Result<String> {
 }
 
 /// Resolves already-fetched typeface bytes (the body of `GET
-/// /skp/<name>/typeface?key=<data-key>`) to the font's PostScript name.
+/// /capture/<id>/<name>/typeface?key=<data-key>`) to the font's PostScript name.
 ///
 /// The bytes Skia serializes wrap the font stream in its own container, so they are
 /// scanned for a *validating* sfnt rather than trusted wholesale — a naive magic-byte

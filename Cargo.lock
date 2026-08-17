@@ -3237,6 +3237,7 @@ dependencies = [
 name = "parley_glyph_positioning_cases"
 version = "0.0.0"
 dependencies = [
+ "icu_properties",
  "rand 0.10.1",
  "rand_chacha 0.10.0",
  "read-fonts 0.41.0",

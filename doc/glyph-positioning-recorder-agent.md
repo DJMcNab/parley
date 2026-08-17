@@ -12,7 +12,7 @@ transport the driver now speaks.
 | --- | --- |
 | `docker exec` for `skp_parser` and cleanup | one HTTP service inside the container |
 | two bind mounts (`/skp` out, `/harness` in), described by 4 host/container path pairs | one read-only code mount (`container/agent/` → `/agent`) |
-| 6 env vars, 2 of them required | 2 env vars, 0 required |
+| 6 env vars, 2 of them required | 3 URL env vars, 0 required |
 | gvproxy gateway autodetection (`CHROMEDRIVER_ALLOWED_IP`) | `--allowed-ips=` (empty — allow any remote IP); host-side `-p 127.0.0.1:...` publishing is the actual access control |
 | harness page loaded via `file://`, `--allow-file-access-from-files` | harness page served by the agent over `http://`, no such flag needed |
 | B5's driver-side workaround: delete SKPs via `docker exec`, never from the host | no host-visible SKP boundary at all — the agent is the only thing that ever touches `/skp` |
@@ -40,15 +40,12 @@ proxy — chromedriver keeps its own published port, unchanged from before.
 
 | process | port | published as |
 | --- | --- | --- |
-| chromedriver | 9515 | `127.0.0.1:9515` |
-| agent | 9516 | `127.0.0.1:9516` |
+| chromedriver | 9515 | `127.0.0.1:9515` by default |
+| agent | 9516 | `127.0.0.1:9516` by default |
 
-Host and container port numbers are identical on purpose: Chrome *inside* the
-container loads the harness page from the agent via container-localhost
-(`http://127.0.0.1:9516/harness/harness.html`), and the driver on the *host* reaches
-the same agent through the published port at the same URL. Keeping the numbers equal
-means one URL string works on both sides of that boundary — only
-`container/run.sh` and `Config` need to agree on it, not a fourth thing.
+The container ports are fixed. Host ports are configurable, while Chrome always loads
+the harness from container-localhost (`http://127.0.0.1:9516/...`). Separating those
+URLs lets another named recorder container coexist on different host ports.
 
 ## The agent's HTTP API
 
@@ -61,21 +58,22 @@ the golden schema, the comparison predicate) stays in Rust. The agent
 | --- | --- | --- |
 | `PUT` | `/harness/<name>` | stores the body in memory (fonts, uploaded once at session start) |
 | `GET` | `/harness/<name>` | serves, in priority order: the startup bundle for `harness.js`; `harness.html` from the mounted directory; otherwise the uploaded store |
-| `DELETE` | `/skp` | removes `layer_*.skp` from the container-internal SKP directory |
-| `GET` | `/skp` | JSON array of current `layer_*.skp` names, sorted |
-| `GET` | `/skp/<name>` | raw SKP bytes |
-| `GET` | `/skp/<name>/commands` | stdout of `skp_parser <path>` (the JSON command dump); a non-zero exit is a 5xx with stderr as the body |
-| `GET` | `/skp/<name>/typeface?key=<data-key>` | stdout of `skp_parser <path> <key>` (the serialized typeface bytes) |
+| `PUT` | `/capture/<id>` | creates a browser session's private SKP directory |
+| `DELETE` | `/capture/<id>` | removes that private directory |
+| `GET` | `/capture/<id>` | JSON array of that session's `layer_*.skp` names, sorted |
+| `GET` | `/capture/<id>/<name>` | raw SKP bytes |
+| `GET` | `/capture/<id>/<name>/commands` | stdout of `skp_parser <path>`; a non-zero exit is a 5xx with stderr as the body |
+| `GET` | `/capture/<id>/<name>/typeface?key=<data-key>` | stdout of `skp_parser <path> <key>` |
 
 `<name>` must be a plain basename for `/harness/`, and must match `layer_*.skp` for
-`/skp/` — the one path-traversal check this needs, not a security-theater exercise.
+capture files. `<id>` is a path-safe, driver-generated session identifier.
 `<data-key>` (e.g. `data/0`) contains a slash, hence the query parameter — it is
 percent-encoded by the Rust client and passed through verbatim by the agent, never
 parsed on either side.
 
-The SKP directory itself is unchanged in kind from before: a plain container-internal
-directory created in the Dockerfile, owned by the `parley` user — no mount, no tmpfs.
-The host simply never sees it directly any more; only the agent's `/skp` surface does.
+The SKP root is a plain container-internal directory created in the Dockerfile, owned
+by the `parley` user — no mount, no tmpfs. Each recorder session uses a private
+subdirectory, so independent Chrome instances can safely clear and capture in parallel.
 
 ## The launcher is the lockstep contract
 
@@ -86,8 +84,9 @@ ports, then execs the requested recorder binary — so the code that talks to a
 container is always the code that just (re)started it.
 
 ```sh
-container/run.sh fuzz_loop --max-cases 300
+container/run.sh fuzz_loop --jobs 4 --max-cases 300
 container/run.sh regenerate_goldens
+container/run.sh minimise --jobs 4
 ```
 
 Iterating on the agent or harness alone (no Rust or image changes) is just an edit
@@ -98,15 +97,14 @@ followed by `docker restart parley-recorder` — the mount is read live.
 - `src/agent.rs` — `AgentClient`, a blocking `ureq` client for the table above, called
   synchronously from the driver's async methods exactly as the old `docker exec` calls
   were (a handful of localhost round-trips per capture needs no async plumbing).
-- `src/driver.rs` — `Config` is two URLs (`webdriver`, `agent`), both env-overridable
-  (`PARLEY_GLYPH_WEBDRIVER`, `PARLEY_GLYPH_AGENT`), neither required. `Recorder`
+- `src/driver.rs` — `Config` has host-side `webdriver`/`agent` URLs plus the agent URL
+  seen by container-local Chrome. All are env-overridable, none required. `Recorder`
   uploads fonts through the agent at `attach`, navigates to the agent's own
   `/harness/harness.html`, and drives capture/cleanup/fetch through it.
 - `src/skp_json.rs` — pure parsing now: no `docker exec`, no `Command`. Fed by bytes
   the agent already fetched.
 - `src/harness.rs` — still owns the `Case`/`Run` → CSS mapping and the payload
-  builder; `renderAndCapture`'s payload lost its SKP-directory parameter, since
-  `harness.ts` gets that from `shared.ts` directly (see below).
+  builder; the driver passes a path-safe capture ID separately from that payload.
 
 ## Browser side
 
@@ -115,10 +113,10 @@ one constant (`shared.ts`'s `SKP_DIR`) and are bundled/served by the same proces
 
 - `agent.ts` — the HTTP service.
 - `harness.ts` — the browser half, converted from the old `harness.js` to real
-  TypeScript. Same envelope contract, same double `requestAnimationFrame` wait, same
-  behavior — only the transport around it changed. `renderAndCapture` now imports
-  `SKP_DIR` from `shared.ts` and calls `printToSkPicture` itself, rather than taking a
-  directory argument the Rust driver would otherwise have to know.
+  TypeScript. `renderAndCapture` imports `SKP_DIR`, appends the session ID, and calls
+  `printToSkPicture` itself. Its freshness barrier is one rAF followed by a zero-delay
+  task: the task runs after that frame paints, unlike a nested rAF which waits a second
+  display interval.
 - `harness.html` — unchanged in substance; still names `Roboto.ttf` via a relative
   `url()`, which now resolves against the agent's own `/harness/` route instead of a
   `file://` mount.

@@ -14,11 +14,12 @@
 // Endpoints:
 //   PUT    /harness/<name>            store the body in memory (fonts, at session start)
 //   GET    /harness/<name>            harness.js bundle | harness.html | an upload
-//   DELETE /skp                       remove layer_*.skp from SKP_DIR
-//   GET    /skp                       JSON array of current layer_*.skp names, sorted
-//   GET    /skp/<name>                raw SKP bytes
-//   GET    /skp/<name>/commands       stdout of `skp_parser <path>` (JSON command dump)
-//   GET    /skp/<name>/typeface?key=  stdout of `skp_parser <path> <key>` (font bytes)
+//   PUT    /capture/<id>              create a session-private SKP directory
+//   DELETE /capture/<id>              remove its layer_*.skp files
+//   GET    /capture/<id>              JSON array of its layer_*.skp names, sorted
+//   GET    /capture/<id>/<name>       raw SKP bytes
+//   GET    /capture/<id>/<name>/commands
+//   GET    /capture/<id>/<name>/typeface?key=<data-key>
 //
 // Run with `deno run --check`, per the entrypoint, so a type error here fails
 // container startup rather than a mid-session request.
@@ -63,6 +64,15 @@ function isLayerSkpName(name: string): boolean {
   return (
     isPlainBasename(name) && name.startsWith("layer_") && name.endsWith(".skp")
   );
+}
+
+/** A driver-generated, path-safe browser-session identifier. */
+function isCaptureId(id: string): boolean {
+  return /^capture-[A-Za-z0-9_-]+$/.test(id);
+}
+
+function captureDir(id: string): string {
+  return `${SKP_DIR}/${id}`;
 }
 
 function contentTypeFor(name: string): string {
@@ -156,9 +166,14 @@ async function handleHarnessPut(
   return textResponse("ok", 200);
 }
 
-async function handleSkpList(): Promise<Response> {
+async function handleCaptureInit(id: string): Promise<Response> {
+  await Deno.mkdir(captureDir(id), { recursive: true });
+  return textResponse("ok", 200);
+}
+
+async function handleSkpList(id: string): Promise<Response> {
   const names: string[] = [];
-  for await (const entry of Deno.readDir(SKP_DIR)) {
+  for await (const entry of Deno.readDir(captureDir(id))) {
     if (entry.isFile && isLayerSkpName(entry.name)) {
       names.push(entry.name);
     }
@@ -170,34 +185,36 @@ async function handleSkpList(): Promise<Response> {
   });
 }
 
-/** Replaces the old `docker exec … rm -f layer_*.skp` cleanup. */
-async function handleSkpClear(): Promise<Response> {
-  for await (const entry of Deno.readDir(SKP_DIR)) {
-    if (entry.isFile && isLayerSkpName(entry.name)) {
-      await Deno.remove(`${SKP_DIR}/${entry.name}`);
+/** Removes this session's whole capture directory; printToSkPicture recreates it. */
+async function handleSkpClear(id: string): Promise<Response> {
+  try {
+    await Deno.remove(captureDir(id), { recursive: true });
+  } catch (error) {
+    if (!(error instanceof Deno.errors.NotFound)) {
+      throw error;
     }
   }
   return textResponse("ok", 200);
 }
 
-async function handleSkpGet(name: string): Promise<Response> {
+async function handleSkpGet(id: string, name: string): Promise<Response> {
   if (!isLayerSkpName(name)) {
     return textResponse("invalid skp file name", 400);
   }
   try {
-    const bytes = await Deno.readFile(`${SKP_DIR}/${name}`);
+    const bytes = await Deno.readFile(`${captureDir(id)}/${name}`);
     return bytesResponse(bytes, 200, "application/octet-stream");
   } catch {
     return textResponse(`no such skp: ${name}`, 404);
   }
 }
 
-async function handleSkpCommands(name: string): Promise<Response> {
+async function handleSkpCommands(id: string, name: string): Promise<Response> {
   if (!isLayerSkpName(name)) {
     return textResponse("invalid skp file name", 400);
   }
   try {
-    const stdout = await runSkpParser([`${SKP_DIR}/${name}`]);
+    const stdout = await runSkpParser([`${captureDir(id)}/${name}`]);
     return bytesResponse(stdout, 200, "application/json");
   } catch (error) {
     return textResponse(String((error as Error)?.message ?? error), 500);
@@ -206,6 +223,7 @@ async function handleSkpCommands(name: string): Promise<Response> {
 
 /** `key` (e.g. `data/0`) is passed to `skp_parser` verbatim — never parsed here. */
 async function handleSkpTypeface(
+  id: string,
   name: string,
   key: string | null,
 ): Promise<Response> {
@@ -216,7 +234,7 @@ async function handleSkpTypeface(
     return textResponse("missing `key` query parameter", 400);
   }
   try {
-    const stdout = await runSkpParser([`${SKP_DIR}/${name}`, key]);
+    const stdout = await runSkpParser([`${captureDir(id)}/${name}`, key]);
     return bytesResponse(stdout, 200, "application/octet-stream");
   } catch (error) {
     return textResponse(String((error as Error)?.message ?? error), 500);
@@ -234,25 +252,30 @@ function handler(request: Request): Promise<Response> {
     if (request.method === "GET") return handleHarnessGet(name);
     if (request.method === "PUT") return handleHarnessPut(name, request);
   }
-  if (segments[0] === "skp") {
-    if (segments.length === 1) {
-      if (request.method === "GET") return handleSkpList();
-      if (request.method === "DELETE") return handleSkpClear();
+  if (segments[0] === "capture" && segments.length >= 2) {
+    const id = segments[1];
+    if (!isCaptureId(id)) {
+      return Promise.resolve(textResponse("invalid capture id", 400));
     }
-    if (segments.length === 2 && request.method === "GET") {
-      return handleSkpGet(segments[1]);
+    if (segments.length === 2) {
+      if (request.method === "PUT") return handleCaptureInit(id);
+      if (request.method === "GET") return handleSkpList(id);
+      if (request.method === "DELETE") return handleSkpClear(id);
+    }
+    if (segments.length === 3 && request.method === "GET") {
+      return handleSkpGet(id, segments[2]);
     }
     if (
-      segments.length === 3 && segments[2] === "commands" &&
+      segments.length === 4 && segments[3] === "commands" &&
       request.method === "GET"
     ) {
-      return handleSkpCommands(segments[1]);
+      return handleSkpCommands(id, segments[2]);
     }
     if (
-      segments.length === 3 && segments[2] === "typeface" &&
+      segments.length === 4 && segments[3] === "typeface" &&
       request.method === "GET"
     ) {
-      return handleSkpTypeface(segments[1], url.searchParams.get("key"));
+      return handleSkpTypeface(id, segments[2], url.searchParams.get("key"));
     }
   }
   return Promise.resolve(

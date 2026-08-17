@@ -27,7 +27,8 @@ pub use glyph_output::{
 };
 pub use harness_css::{container_css, run_css};
 pub use minimise::{
-    MinimiseError, MinimiseOutcome, Oracle, OracleFailure, case_content_key, minimise,
+    MinimiseError, MinimiseOutcome, MinimisePhaseStats, MinimiseStats, Oracle, OracleActivity,
+    OracleFailure, case_content_key, minimise,
 };
 pub use signature::FailureSignature;
 pub use typeface::{TypefaceError, postscript_name_from_bytes, scan_for_valid_sfnts};

@@ -8,6 +8,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+icu_properties = { workspace = true, features = ["compiled_data"] }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 read-fonts = { workspace = true, features = ["std"] }

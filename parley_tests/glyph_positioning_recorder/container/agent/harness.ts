@@ -20,8 +20,8 @@
 //     parleyHarness.run(() => parleyHarness.initHarness(), arguments[0])
 //
 //     parleyHarness.run(
-//         () => parleyHarness.renderAndCapture(arguments[0]),
-//         arguments[1])
+//         () => parleyHarness.renderAndCapture(arguments[0], arguments[1]),
+//         arguments[2])
 //
 // Both resolve the callback with `{ok: true, ...}` or `{ok: false, error}` and never
 // leave a promise rejected: a rejection surfaces to the driver as a script *timeout*
@@ -36,10 +36,10 @@ declare global {
 
 const CONTAINER_ID = "content";
 
-/** Resolves after the next animation frame. */
-function nextFrame(): Promise<void> {
+/** Resolves in a task queued from the next animation frame, after that frame paints. */
+function nextPaint(): Promise<void> {
   return new Promise((resolve) => {
-    requestAnimationFrame(() => resolve());
+    requestAnimationFrame(() => setTimeout(resolve, 0));
   });
 }
 
@@ -101,21 +101,18 @@ function buildDom(payload: Payload): HTMLElement {
 }
 
 /**
- * Renders one case and captures it, atomically.
+ * Renders one case and captures it after the next paint.
  *
- * The two `requestAnimationFrame` waits are what guarantee the new content has been
- * through a compositor commit before capture. If it turns out `printToSkPicture`
- * forces its own frame, they can be dropped — but a stale capture would make a reused
- * session lag by one case, which looks like catastrophic parity failure rather than a
- * harness bug.
+ * A plain rAF callback runs before its frame paints, which is why the original nested
+ * rAF barrier needed two display intervals. A zero-delay task queued from the first
+ * callback runs after that frame's paint, providing the same freshness barrier sooner.
  *
- * `SKP_DIR` — the container-internal directory `printToSkPicture` writes into — is
- * imported from `shared.ts` rather than taken as a parameter: the Rust driver never
- * learns this path (see `doc/glyph-positioning-recorder-agent.md`), so this function
- * supplies it itself.
+ * Each browser session gets a private subdirectory, allowing independent Chrome
+ * instances to capture concurrently without one session clearing another's SKP.
  */
 async function renderAndCapture(
   payload: Payload,
+  captureId: string,
 ): Promise<{ width: number; height: number }> {
   buildDom(payload);
 
@@ -131,9 +128,8 @@ async function renderAndCapture(
     );
   }
 
-  await nextFrame();
-  await nextFrame();
-  globalThis.chrome.gpuBenchmarking.printToSkPicture(SKP_DIR);
+  await nextPaint();
+  globalThis.chrome.gpuBenchmarking.printToSkPicture(`${SKP_DIR}/${captureId}`);
 
   return { width, height };
 }

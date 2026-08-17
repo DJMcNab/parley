@@ -6,7 +6,10 @@
 #
 #   container/run.sh fuzz_loop --max-cases 300
 #   container/run.sh regenerate_goldens [filter]
-#   container/run.sh minimise [--out DIR] [case.txt ...]
+#   container/run.sh minimise [--jobs N] [--out DIR] [case.txt ...]
+#
+# PARLEY_GLYPH_CONTAINER and PARLEY_GLYPH_{WEBDRIVER,AGENT}_PORT can be overridden
+# to run alongside another recorder container.
 set -eu
 
 if [ "$#" -lt 1 ]; then
@@ -18,8 +21,10 @@ shift
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../../.." && pwd)"
-image="parley-glyph-recorder:latest"
-container="parley-recorder"
+image="${PARLEY_GLYPH_IMAGE:-parley-glyph-recorder:latest}"
+container="${PARLEY_GLYPH_CONTAINER:-parley-recorder}"
+webdriver_port="${PARLEY_GLYPH_WEBDRIVER_PORT:-9515}"
+agent_port="${PARLEY_GLYPH_AGENT_PORT:-9516}"
 
 if ! docker image inspect "${image}" >/dev/null 2>&1; then
   echo "building ${image}..." >&2
@@ -28,18 +33,16 @@ fi
 
 docker rm -f "${container}" >/dev/null 2>&1 || true
 
-# Both publishes use identical host/container port numbers: Chrome inside the
-# container loads the harness page from the agent via container-localhost, so keeping
-# the numbers equal means the same URL (`http://127.0.0.1:<port>/...`) works on both
-# sides of the boundary, and only the driver's config needs to know it.
+# Container ports stay fixed; host ports are configurable so independent recorder
+# containers can coexist. Chrome uses the container-local agent URL exported below.
 docker run -d --name "${container}" \
   -v "${script_dir}/agent:/agent:ro" \
-  -p 127.0.0.1:9515:9515 \
-  -p 127.0.0.1:9516:9516 \
+  -p "127.0.0.1:${webdriver_port}:9515" \
+  -p "127.0.0.1:${agent_port}:9516" \
   "${image}" >/dev/null
 
 echo "waiting for chromedriver and the agent..." >&2
-for port in 9515 9516; do
+for port in "${webdriver_port}" "${agent_port}"; do
   for _ in $(seq 1 60); do
     if curl -s -o /dev/null "http://127.0.0.1:${port}/"; then
       break
@@ -53,4 +56,8 @@ for port in 9515 9516; do
 done
 
 cd "${repo_root}"
+export PARLEY_GLYPH_WEBDRIVER="http://127.0.0.1:${webdriver_port}"
+export PARLEY_GLYPH_AGENT="http://127.0.0.1:${agent_port}"
+# Chrome runs inside the container, where the agent retains its fixed internal port.
+export PARLEY_GLYPH_BROWSER_AGENT="http://127.0.0.1:9516"
 exec cargo run -p parley_glyph_positioning_recorder --bin "${bin}" -- "$@"

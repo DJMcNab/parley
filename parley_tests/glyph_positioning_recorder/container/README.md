@@ -65,8 +65,9 @@ restarts the container, waits for both ports, then execs the requested recorder
 binary.
 
 ```sh
-container/run.sh fuzz_loop --max-cases 300
+container/run.sh fuzz_loop --jobs 4 --max-cases 300
 container/run.sh regenerate_goldens
+container/run.sh minimise --jobs 4
 ```
 
 Under the hood, that script runs (roughly):
@@ -87,10 +88,24 @@ alone is an edit followed by `docker restart parley-recorder`, no image rebuild:
 mount is code, read fresh at container startup, not the kind of host/container data
 exchange that needed the workarounds an earlier design iteration required.
 
-Ports: chromedriver on 9515, the agent on 9516, both published on `127.0.0.1` with
-identical host and container port numbers (Chrome *inside* the container loads the
-harness page from the agent via container-localhost, so keeping the numbers equal
-means the same URL string works on both sides of that boundary).
+Container ports are fixed: chromedriver on 9515 and the agent on 9516. The launcher
+normally publishes the same host ports, but the host side and Chrome's container-local
+agent URL are configured separately so another recorder can run alongside it:
+
+```sh
+PARLEY_GLYPH_CONTAINER=parley-recorder-speed \
+PARLEY_GLYPH_WEBDRIVER_PORT=9525 \
+PARLEY_GLYPH_AGENT_PORT=9526 \
+  container/run.sh minimise --jobs 4
+```
+
+Each minimiser worker opens a separate Chrome instance in that one container. Its SKP
+files live in a session-private subdirectory, so captures can safely overlap.
+`fuzz_loop --jobs N` uses the same isolation and assigns each seed exactly once from a
+shared counter. `minimise` resumes discovery-mode batches by default: a seed with both
+`minimised.txt` and `minimised_mismatch.txt` is included in the report without opening
+Chrome again. Pass `--force` to reprocess completed seeds; explicit case paths are
+always processed.
 
 ## Threat model
 

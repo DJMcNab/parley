@@ -8,20 +8,22 @@
 //! the checked-in corpus is manual, mirroring `PARLEY_TEST=accept`.
 //!
 //! ```sh
-//! container/run.sh fuzz_loop [--start-seed N] [--max-cases N] [--out DIR]
+//! container/run.sh fuzz_loop [--jobs N] [--start-seed N] [--max-cases N] [--out DIR]
 //! ```
 //!
 //! or, against an already-running container (see `container/run.sh`):
 //!
 //! ```sh
 //! cargo run -p parley_glyph_positioning_recorder --bin fuzz_loop -- \
-//!   [--start-seed N] [--max-cases N] [--out DIR]
+//!   [--jobs N] [--start-seed N] [--max-cases N] [--out DIR]
 //! ```
 //!
 //! See "`src/bin/fuzz_loop.rs`" in `doc/glyph-positioning-chrome-parity-phase4.md` and
 //! `doc/glyph-positioning-recorder-agent.md`.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use parley::LayoutContext;
@@ -44,63 +46,151 @@ struct Args {
     start_seed: u64,
     max_cases: Option<u64>,
     out: PathBuf,
+    jobs: usize,
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let args = Args::parse()?;
     std::fs::create_dir_all(&args.out)?;
+    let jobs = args.max_cases.map_or(args.jobs, |max| {
+        args.jobs.min(usize::try_from(max).unwrap_or(usize::MAX))
+    });
     println!(
-        "fuzzing from seed {} into {} (pin with --start-seed to reproduce)",
+        "fuzzing from seed {} into {} with {jobs} Chrome worker(s) (pin with --start-seed to reproduce)",
         args.start_seed,
         args.out.display()
     );
 
+    let started = Instant::now();
+    if jobs == 0 {
+        report(started.elapsed(), 0, 0, 0);
+        return Ok(());
+    }
+
+    let stop = Arc::new(AtomicBool::new(false));
+    install_interrupt_handler(Arc::clone(&stop))?;
+    let next_index = Arc::new(AtomicU64::new(0));
     let config = Config::from_env();
-    let mut recorder = Recorder::attach(config.clone()).await?;
+    let worker_results: Vec<WorkerStats> = std::thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(jobs);
+        for worker_index in 0..jobs {
+            let worker = Worker {
+                index: worker_index,
+                start_seed: args.start_seed,
+                max_cases: args.max_cases,
+                out: &args.out,
+                config: config.clone(),
+                next_index: Arc::clone(&next_index),
+                stop: Arc::clone(&stop),
+            };
+            handles.push(scope.spawn(move || run_worker(worker)));
+        }
+
+        let mut results = Vec::with_capacity(jobs);
+        for handle in handles {
+            let result = handle
+                .join()
+                .map_err(|_| -> Error { "a fuzz worker panicked".into() })??;
+            results.push(result);
+        }
+        Ok::<_, Error>(results)
+    })?;
+
+    let stats = worker_results
+        .into_iter()
+        .fold(WorkerStats::default(), |mut total, worker| {
+            total.cases += worker.cases;
+            total.mismatches += worker.mismatches;
+            total.harness_failures += worker.harness_failures;
+            total
+        });
+    report(
+        started.elapsed(),
+        stats.cases,
+        stats.mismatches,
+        stats.harness_failures,
+    );
+    Ok(())
+}
+
+struct Worker<'a> {
+    index: usize,
+    start_seed: u64,
+    max_cases: Option<u64>,
+    out: &'a Path,
+    config: Config,
+    next_index: Arc<AtomicU64>,
+    stop: Arc<AtomicBool>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct WorkerStats {
+    cases: u64,
+    mismatches: u64,
+    harness_failures: u64,
+}
+
+fn run_worker(worker: Worker<'_>) -> Result<WorkerStats> {
+    let stop = Arc::clone(&worker.stop);
+    let result = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(Error::from)
+        .and_then(|runtime| runtime.block_on(run_worker_async(worker)));
+    if result.is_err() {
+        stop.store(true, Ordering::Relaxed);
+    }
+    result
+}
+
+async fn run_worker_async(worker: Worker<'_>) -> Result<WorkerStats> {
+    let mut recorder = Recorder::attach(worker.config.clone()).await?;
     let mut font_cx = font_context();
     let mut layout_cx = LayoutContext::new();
-
-    let started = Instant::now();
-    let mut cases = 0_u64;
-    let mut mismatches = 0_u64;
-    let mut harness_failures = 0_u64;
+    let mut stats = WorkerStats::default();
     let mut consecutive_failures = 0_u32;
     let mut result = Ok(());
 
     loop {
-        if args.max_cases.is_some_and(|max| cases >= max) {
+        if worker.stop.load(Ordering::Relaxed) {
             break;
         }
-        let seed = args.start_seed + cases;
+        let case_index = worker.next_index.fetch_add(1, Ordering::Relaxed);
+        if worker.max_cases.is_some_and(|max| case_index >= max) {
+            break;
+        }
+        let Some(seed) = worker.start_seed.checked_add(case_index) else {
+            worker.stop.store(true, Ordering::Relaxed);
+            result = Err("seed range overflowed u64".into());
+            break;
+        };
         let case = Case::from_seed(seed);
 
-        let recording = tokio::select! {
-            recording = capture_with_retry(&mut recorder, &config, &case) => recording,
-            _ = tokio::signal::ctrl_c() => {
-                println!("interrupted");
-                break;
-            }
-        };
-
-        cases += 1;
+        let recording = capture_with_retry(&mut recorder, &worker.config, &case).await;
+        stats.cases += 1;
         let recording = match recording {
             Ok(recording) => {
                 consecutive_failures = 0;
                 recording
             }
             Err(error) => {
-                harness_failures += 1;
+                stats.harness_failures += 1;
                 consecutive_failures += 1;
                 eprintln!("seed {seed}: harness failure: {error}");
-                write_artifact(&args.out, seed, |dir| {
+                if let Err(error) = write_artifact(worker.out, seed, |dir| {
                     std::fs::write(dir.join("harness_failure.txt"), error.to_string())?;
                     Ok(())
-                })?;
+                }) {
+                    worker.stop.store(true, Ordering::Relaxed);
+                    result = Err(error);
+                    break;
+                }
                 if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
+                    worker.stop.store(true, Ordering::Relaxed);
                     result = Err(format!(
-                        "aborting after {consecutive_failures} consecutive harness failures; the \
+                        "worker {} aborting after {consecutive_failures} consecutive harness failures; the \
                          container or the WebDriver session is not healthy"
+                        , worker.index + 1
                     )
                     .into());
                     break;
@@ -112,7 +202,7 @@ async fn main() -> Result<()> {
         let laid_out = layout(&case, &mut font_cx, &mut layout_cx);
         let parley = parley_output(&laid_out, &case);
         if let Err(mismatch) = compare(&parley, &recording.output) {
-            mismatches += 1;
+            stats.mismatches += 1;
             eprintln!("seed {seed}: mismatch\n{mismatch}");
             let golden = Golden {
                 case: case.clone(),
@@ -121,19 +211,41 @@ async fn main() -> Result<()> {
             };
             // The raw dump and the `.skp` are kept because a deserializer bug and a
             // genuine parity bug look identical in the position diff alone.
-            write_artifact(&args.out, seed, |dir| {
+            if let Err(error) = write_artifact(worker.out, seed, |dir| {
                 std::fs::write(dir.join("case.txt"), golden.write())?;
                 std::fs::write(dir.join("mismatch.txt"), mismatch.to_string())?;
                 std::fs::write(dir.join("capture.json"), &recording.json)?;
                 std::fs::write(dir.join("capture.skp"), &recording.skp_bytes)?;
                 Ok(())
-            })?;
+            }) {
+                worker.stop.store(true, Ordering::Relaxed);
+                result = Err(error);
+                break;
+            }
         }
     }
 
     let _ = recorder.close().await;
-    report(started.elapsed(), cases, mismatches, harness_failures);
-    result
+    result?;
+    Ok(stats)
+}
+
+fn install_interrupt_handler(stop: Arc<AtomicBool>) -> Result<()> {
+    std::thread::Builder::new()
+        .name("fuzz-loop-interrupt".to_string())
+        .spawn(move || {
+            let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            else {
+                return;
+            };
+            if runtime.block_on(tokio::signal::ctrl_c()).is_ok() {
+                println!("interrupted; finishing captures already in flight");
+                stop.store(true, Ordering::Relaxed);
+            }
+        })?;
+    Ok(())
 }
 
 /// Runs `write` against a fresh (or reused) per-seed artifact directory.
@@ -163,6 +275,7 @@ impl Args {
         let mut start_seed = None;
         let mut max_cases = None;
         let mut out = PathBuf::from("target/glyph_positioning_fuzz");
+        let mut jobs = 1;
 
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
@@ -174,6 +287,14 @@ impl Args {
                 "--start-seed" => start_seed = Some(value()?.parse::<u64>()?),
                 "--max-cases" => max_cases = Some(value()?.parse::<u64>()?),
                 "--out" => out = PathBuf::from(value()?),
+                "--jobs" => {
+                    jobs = value()?
+                        .parse::<usize>()
+                        .map_err(|_| -> Error { "--jobs must be a positive integer".into() })?;
+                    if jobs == 0 {
+                        return Err("--jobs must be at least 1".into());
+                    }
+                }
                 other => return Err(format!("unrecognised argument {other:?}").into()),
             }
         }
@@ -190,6 +311,7 @@ impl Args {
             start_seed,
             max_cases,
             out,
+            jobs,
         })
     }
 }

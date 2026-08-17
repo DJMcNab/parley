@@ -32,19 +32,41 @@ pub struct AgentClient {
     /// The agent's base URL (`Config::agent`), with any trailing slash trimmed.
     base: String,
     agent: ureq::Agent,
+    capture_id: String,
 }
 
 impl AgentClient {
     /// `base` is the agent's own URL, e.g. `http://127.0.0.1:9516`.
     #[must_use]
-    pub fn new(base: &str) -> Self {
+    pub fn new(base: &str, capture_id: String) -> Self {
         let config = ureq::Agent::config_builder()
             .timeout_global(Some(AGENT_TIMEOUT))
             .build();
         Self {
             base: base.trim_end_matches('/').to_string(),
             agent: config.into(),
+            capture_id,
         }
+    }
+
+    /// Creates this browser session's private capture directory.
+    pub fn init_capture(&self) -> Result<()> {
+        let url = self.capture_url();
+        self.agent
+            .put(&url)
+            .send_empty()
+            .map_err(|error| format!("PUT {url}: {error}"))?;
+        Ok(())
+    }
+
+    /// The identifier passed to the browser harness.
+    #[must_use]
+    pub fn capture_id(&self) -> &str {
+        &self.capture_id
+    }
+
+    fn capture_url(&self) -> String {
+        format!("{}/capture/{}", self.base, self.capture_id)
     }
 
     /// `PUT /harness/<name>`: uploads `bytes` (fonts, at session start — the harness
@@ -59,10 +81,9 @@ impl AgentClient {
         Ok(())
     }
 
-    /// `DELETE /skp`: removes the previous case's `layer_*.skp`, so the next capture
-    /// is unambiguous.
+    /// `DELETE /capture/<id>`: removes this session's previous `layer_*.skp` files.
     pub fn clear_skps(&self) -> Result<()> {
-        let url = format!("{}/skp", self.base);
+        let url = self.capture_url();
         self.agent
             .delete(&url)
             .call()
@@ -70,9 +91,9 @@ impl AgentClient {
         Ok(())
     }
 
-    /// `GET /skp`: the current `layer_*.skp` file names, sorted by the agent.
+    /// `GET /capture/<id>`: this session's current SKP names, sorted by the agent.
     pub fn list_skps(&self) -> Result<Vec<String>> {
-        let url = format!("{}/skp", self.base);
+        let url = self.capture_url();
         let body = self
             .agent
             .get(&url)
@@ -85,9 +106,9 @@ impl AgentClient {
             .map_err(|error| format!("GET {url}: not a JSON array of names: {error}").into())
     }
 
-    /// `GET /skp/<name>`: the raw captured SKP bytes.
+    /// `GET /capture/<id>/<name>`: the raw captured SKP bytes.
     pub fn fetch_skp(&self, name: &str) -> Result<Vec<u8>> {
-        let url = format!("{}/skp/{name}", self.base);
+        let url = format!("{}/{name}", self.capture_url());
         self.agent
             .get(&url)
             .call()
@@ -97,22 +118,22 @@ impl AgentClient {
             .map_err(|error| format!("GET {url}: reading body: {error}").into())
     }
 
-    /// `GET /skp/<name>/commands`: `skp_parser <path>`'s JSON command dump.
+    /// `GET /capture/<id>/<name>/commands`: `skp_parser`'s JSON command dump.
     pub fn fetch_commands(&self, name: &str) -> Result<String> {
-        let url = format!("{}/skp/{name}/commands", self.base);
+        let url = format!("{}/{name}/commands", self.capture_url());
         let bytes = self.get_or_status_error(self.agent.get(&url), &url)?;
         String::from_utf8(bytes)
             .map_err(|error| format!("GET {url}: response was not UTF-8: {error}").into())
     }
 
-    /// `GET /skp/<name>/typeface?key=<data-key>`: `skp_parser <path> <data-key>`'s
+    /// `GET /capture/<id>/<name>/typeface?key=<data-key>`: `skp_parser`'s
     /// stdout, i.e. the serialized typeface bytes.
     ///
     /// `data_key` (e.g. `data/0`) is percent-encoded into the query string here and
     /// decoded back by the agent, which then passes it to `skp_parser` verbatim — it
     /// is never parsed as a path segment on either side.
     pub fn fetch_typeface(&self, name: &str, data_key: &str) -> Result<Vec<u8>> {
-        let url = format!("{}/skp/{name}/typeface", self.base);
+        let url = format!("{}/{name}/typeface", self.capture_url());
         let request = self.agent.get(&url).query("key", data_key);
         self.get_or_status_error(request, &url)
     }

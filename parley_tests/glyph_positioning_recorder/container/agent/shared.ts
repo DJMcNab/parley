@@ -15,6 +15,6 @@
  *
  * A plain container-internal directory (created in the Dockerfile, owned by the
  * `parley` user) — no mount, no tmpfs. The host never sees it; only the agent's
- * `/skp` HTTP surface exposes its contents.
+ * Session-scoped `/capture/<id>` HTTP routes expose its contents.
  */
 export const SKP_DIR = "/skp";

@@ -3,6 +3,9 @@
 
 use std::fmt::Write as _;
 
+use icu_properties::CodePointMapData;
+use icu_properties::props::{GeneralCategory, Script};
+
 use crate::chromium_quantization::{LAYOUT_UNIT_STEPS_PER_PX, SPACING_GRID_STEPS_PER_PX};
 use crate::compare::Mismatch;
 use crate::generate::{
@@ -16,8 +19,54 @@ const FONT_SIZE_STEPS_PER_PX: f32 = 1.0 / FONT_SIZE_STEP;
 // A safety bound for passes whose reductions can unlock one another.
 const MAX_PASSES: u32 = 5;
 
-// This reaches beyond Roboto's Latin characters into its combining marks.
-const CHAR_SCAN_CAP: usize = 600;
+// A safety bound for exhaustive probing within one Unicode group. This is applied to
+// the original character's group, not to the alphabet prefix, so scripts added by
+// future fonts still get representatives and same-group probes.
+const CHAR_GROUP_SCAN_CAP: usize = 600;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CharGroup {
+    script: Script,
+    category: GeneralCategory,
+}
+
+fn char_group(ch: char) -> CharGroup {
+    CharGroup {
+        script: CodePointMapData::<Script>::new().get(ch),
+        category: CodePointMapData::<GeneralCategory>::new().get(ch),
+    }
+}
+
+/// Returns the ordered character probes for `ch`.
+///
+/// Characters sharing a Unicode script and general category with `ch` are all worth
+/// trying: for example, changing one Latin lowercase letter can expose a glyph-specific
+/// failure. Other groups get only their lowest-codepoint representative. If `a` does
+/// not reproduce a failure in another group, scanning through `b` to `z` is unlikely
+/// to justify 25 more Chrome captures. The grouping comes from Unicode properties, not
+/// the currently bundled font, so additional fonts and scripts need no new table.
+fn char_probes(ch: char) -> Vec<char> {
+    let alphabet = alphabet();
+    let ceiling = alphabet.binary_search(&ch).unwrap_or(alphabet.len());
+    let own_group = char_group(ch);
+    let mut own_group_count = 0;
+    let mut represented_groups = Vec::new();
+    let mut probes = Vec::new();
+
+    for &candidate in &alphabet[..ceiling] {
+        let group = char_group(candidate);
+        if group == own_group {
+            if own_group_count < CHAR_GROUP_SCAN_CAP {
+                probes.push(candidate);
+                own_group_count += 1;
+            }
+        } else if !represented_groups.contains(&group) {
+            probes.push(candidate);
+            represented_groups.push(group);
+        }
+    }
+    probes
+}
 
 /// An error returned while evaluating a candidate.
 #[derive(Clone, Debug)]
@@ -32,6 +81,11 @@ pub struct OracleFailure {
 pub trait Oracle {
     /// Returns the comparison result, or an evaluation error.
     fn evaluate(&mut self, case: &Case) -> Result<Result<(), Mismatch>, OracleFailure>;
+
+    /// Optional cumulative counters used to attribute expensive oracle work to phases.
+    fn activity(&self) -> Option<OracleActivity> {
+        None
+    }
 }
 
 impl<F> Oracle for F
@@ -41,6 +95,45 @@ where
     fn evaluate(&mut self, case: &Case) -> Result<Result<(), Mismatch>, OracleFailure> {
         self(case)
     }
+}
+
+/// Cumulative work performed by an oracle.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OracleActivity {
+    /// Uncached external evaluations, such as Chrome captures.
+    pub captures: u64,
+    /// Evaluations served from a cache.
+    pub cache_hits: u64,
+}
+
+/// Work attributed to one minimisation phase across all passes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MinimisePhaseStats {
+    /// Candidates evaluated by this phase.
+    pub candidates: u64,
+    /// Uncached oracle captures performed by this phase.
+    pub captures: u64,
+    /// Oracle cache hits in this phase.
+    pub cache_hits: u64,
+}
+
+/// Per-phase minimisation work counters.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MinimiseStats {
+    /// The required initial evaluation of the input case.
+    pub baseline: MinimisePhaseStats,
+    /// Exact container-width probes.
+    pub width_exact: MinimisePhaseStats,
+    /// Exact font-size and spacing probes.
+    pub scalar_exacts: MinimisePhaseStats,
+    /// Styled-run removal probes.
+    pub remove_runs: MinimisePhaseStats,
+    /// Delta-debugging character removal probes.
+    pub ddmin_chars: MinimisePhaseStats,
+    /// Scalar ladder and binary-search probes.
+    pub scalar_ladder: MinimisePhaseStats,
+    /// Character canonicalisation probes.
+    pub char_scan: MinimisePhaseStats,
 }
 
 /// An error preventing minimisation.
@@ -69,13 +162,20 @@ pub struct MinimiseOutcome {
     pub candidates_tried: u64,
     /// Non-fatal oracle errors encountered.
     pub skips: Vec<String>,
+    /// Work attributed to each reduction phase.
+    pub stats: MinimiseStats,
 }
 
 /// Reduces `case` while preserving its initial failure category.
 pub fn minimise(case: &Case, oracle: &mut dyn Oracle) -> Result<MinimiseOutcome, MinimiseError> {
+    let baseline_activity = oracle.activity();
     let baseline_mismatch = match oracle.evaluate(case).map_err(MinimiseError::Oracle)? {
         Ok(()) => return Err(MinimiseError::BaselinePasses),
         Err(mismatch) => mismatch,
+    };
+    let mut stats = MinimiseStats {
+        baseline: phase_stats(1, baseline_activity, oracle.activity()),
+        ..MinimiseStats::default()
     };
     let baseline = FailureSignature::of(&baseline_mismatch);
     let font_size_target = target_font_size();
@@ -94,12 +194,29 @@ pub fn minimise(case: &Case, oracle: &mut dyn Oracle) -> Result<MinimiseOutcome,
     while changed && passes < MAX_PASSES {
         let before = working.clone();
 
+        let start = minimiser.phase_start();
         minimiser.width_exact(&mut working)?;
+        minimiser.finish_phase(&mut stats.width_exact, start);
+
+        let start = minimiser.phase_start();
         minimiser.scalar_exacts(&mut working, font_size_target)?;
+        minimiser.finish_phase(&mut stats.scalar_exacts, start);
+
+        let start = minimiser.phase_start();
         minimiser.remove_runs(&mut working)?;
+        minimiser.finish_phase(&mut stats.remove_runs, start);
+
+        let start = minimiser.phase_start();
         minimiser.ddmin_chars(&mut working)?;
+        minimiser.finish_phase(&mut stats.ddmin_chars, start);
+
+        let start = minimiser.phase_start();
         minimiser.scalar_ladder(&mut working, font_size_target)?;
+        minimiser.finish_phase(&mut stats.scalar_ladder, start);
+
+        let start = minimiser.phase_start();
         minimiser.char_scan(&mut working)?;
+        minimiser.finish_phase(&mut stats.char_scan, start);
 
         changed = working != before;
         passes += 1;
@@ -113,7 +230,27 @@ pub fn minimise(case: &Case, oracle: &mut dyn Oracle) -> Result<MinimiseOutcome,
         reached_fixed_point: !changed,
         candidates_tried: minimiser.candidates_tried,
         skips: minimiser.skips,
+        stats,
     })
+}
+
+fn phase_stats(
+    candidates: u64,
+    before: Option<OracleActivity>,
+    after: Option<OracleActivity>,
+) -> MinimisePhaseStats {
+    let activity = match (before, after) {
+        (Some(before), Some(after)) => OracleActivity {
+            captures: after.captures.saturating_sub(before.captures),
+            cache_hits: after.cache_hits.saturating_sub(before.cache_hits),
+        },
+        _ => OracleActivity::default(),
+    };
+    MinimisePhaseStats {
+        candidates,
+        captures: activity.captures,
+        cache_hits: activity.cache_hits,
+    }
 }
 
 #[must_use]
@@ -225,7 +362,30 @@ struct Minimiser<'o> {
     candidates_tried: u64,
 }
 
+struct PhaseStart {
+    candidates: u64,
+    activity: Option<OracleActivity>,
+}
+
 impl Minimiser<'_> {
+    fn phase_start(&self) -> PhaseStart {
+        PhaseStart {
+            candidates: self.candidates_tried,
+            activity: self.oracle.activity(),
+        }
+    }
+
+    fn finish_phase(&self, stats: &mut MinimisePhaseStats, start: PhaseStart) {
+        let delta = phase_stats(
+            self.candidates_tried.saturating_sub(start.candidates),
+            start.activity,
+            self.oracle.activity(),
+        );
+        stats.candidates += delta.candidates;
+        stats.captures += delta.captures;
+        stats.cache_hits += delta.cache_hits;
+    }
+
     fn preserves(&mut self, candidate: &Case) -> Result<bool, MinimiseError> {
         self.candidates_tried += 1;
         match self.oracle.evaluate(candidate) {
@@ -521,7 +681,6 @@ impl Minimiser<'_> {
     }
 
     fn char_scan(&mut self, working: &mut Case) -> Result<(), MinimiseError> {
-        let alphabet = alphabet();
         for run_index in 0..working.runs.len() {
             let mut chars: Vec<char> = working.runs[run_index].text.chars().collect();
             for position in 0..chars.len() {
@@ -529,9 +688,7 @@ impl Minimiser<'_> {
                 if ch == ' ' {
                     continue;
                 }
-                let ceiling = alphabet.binary_search(&ch).unwrap_or(alphabet.len());
-                let scan_limit = ceiling.min(CHAR_SCAN_CAP);
-                for &candidate_char in &alphabet[..scan_limit] {
+                for candidate_char in char_probes(ch) {
                     let mut candidate_chars = chars.clone();
                     candidate_chars[position] = candidate_char;
                     let mut candidate = working.clone();
@@ -626,6 +783,28 @@ mod tests {
             }],
             total: 1,
             same_multiset: false,
+        }
+    }
+
+    struct CountingOracle {
+        captures: u64,
+    }
+
+    impl Oracle for CountingOracle {
+        fn evaluate(&mut self, case: &Case) -> Result<Result<(), Mismatch>, OracleFailure> {
+            self.captures += 1;
+            if case.runs[0].text.contains('e') {
+                Ok(Err(glyph_count_mismatch()))
+            } else {
+                Ok(Ok(()))
+            }
+        }
+
+        fn activity(&self) -> Option<OracleActivity> {
+            Some(OracleActivity {
+                captures: self.captures,
+                cache_hits: 0,
+            })
         }
     }
 
@@ -846,11 +1025,45 @@ mod tests {
     }
 
     #[test]
-    fn char_scan_finds_the_lowest_satisfying_character_and_respects_the_cap() {
+    fn phase_stats_account_for_every_evaluation() {
+        let original = case("elephant", 500.0, 20.0);
+        let mut oracle = CountingOracle { captures: 0 };
+        let outcome = minimise(&original, &mut oracle).expect("original fails");
+        let phases = [
+            outcome.stats.baseline,
+            outcome.stats.width_exact,
+            outcome.stats.scalar_exacts,
+            outcome.stats.remove_runs,
+            outcome.stats.ddmin_chars,
+            outcome.stats.scalar_ladder,
+            outcome.stats.char_scan,
+        ];
+        assert_eq!(outcome.stats.baseline.candidates, 1);
+        assert_eq!(
+            phases.iter().map(|phase| phase.candidates).sum::<u64>(),
+            outcome.candidates_tried + 1,
+            "the baseline plus reduction phases must account for every candidate"
+        );
+        assert_eq!(
+            phases.iter().map(|phase| phase.captures).sum::<u64>(),
+            oracle.captures,
+            "the phase capture deltas must equal the oracle's cumulative counter"
+        );
+        assert_eq!(phases.iter().map(|phase| phase.cache_hits).sum::<u64>(), 0);
+    }
+
+    #[test]
+    fn char_scan_finds_the_lowest_satisfying_character_in_the_original_group() {
         let letters = alphabet();
-        let original_char = letters[letters.len() / 2];
-        let threshold_index = letters.len() / 4;
-        let threshold_char = letters[threshold_index];
+        let original_char = 'z';
+        let original_group = char_group(original_char);
+        let same_group: Vec<char> = letters
+            .iter()
+            .copied()
+            .take_while(|&ch| ch < original_char)
+            .filter(|&ch| char_group(ch) == original_group)
+            .collect();
+        let threshold_char = same_group[same_group.len() / 2];
 
         let original = case(&original_char.to_string(), MAX_CASE_WIDTH_PX, 16.0);
         let mut oracle = move |c: &Case| {
@@ -859,7 +1072,7 @@ mod tests {
                 .chars()
                 .next()
                 .expect("case always has non-empty text");
-            if ch >= threshold_char {
+            if char_group(ch) == original_group && ch >= threshold_char {
                 Ok(Err(glyph_count_mismatch()))
             } else {
                 Ok(Ok(()))
@@ -873,20 +1086,42 @@ mod tests {
             "the char scan must canonicalise to the lowest alphabet character that still \
              satisfies the predicate"
         );
+    }
 
-        let original_index = letters
-            .binary_search(&original_char)
-            .expect("original_char came from alphabet()");
-        let bound = original_index.min(CHAR_SCAN_CAP);
-        let bound_u64: u64 = bound
-            .try_into()
-            .expect("bound (an alphabet index) fits in u64");
-        assert!(
-            bound_u64 >= outcome.candidates_tried.saturating_sub(1),
-            "the per-position scan must not exceed min(alphabet index, CHAR_SCAN_CAP) \
-             candidates: bound {bound}, tried {}",
-            outcome.candidates_tried
-        );
+    #[test]
+    fn char_probes_scan_only_the_original_group_fully() {
+        let original = 'z';
+        let original_group = char_group(original);
+        let probes = char_probes(original);
+        let candidates = &alphabet()[..alphabet()
+            .binary_search(&original)
+            .expect("z is in the bundled font")];
+
+        let expected_same_group: Vec<char> = candidates
+            .iter()
+            .copied()
+            .filter(|&ch| char_group(ch) == original_group)
+            .collect();
+        let actual_same_group: Vec<char> = probes
+            .iter()
+            .copied()
+            .filter(|&ch| char_group(ch) == original_group)
+            .collect();
+        assert_eq!(actual_same_group, expected_same_group);
+
+        for &probe in &probes {
+            let group = char_group(probe);
+            if group != original_group {
+                assert_eq!(
+                    probes
+                        .iter()
+                        .filter(|&&candidate| char_group(candidate) == group)
+                        .count(),
+                    1,
+                    "a foreign script/category group must contribute only its representative"
+                );
+            }
+        }
     }
 
     #[test]

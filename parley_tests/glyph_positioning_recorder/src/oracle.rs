@@ -19,11 +19,11 @@ use std::collections::HashMap;
 
 use parley::LayoutContext;
 use parley_glyph_positioning_cases::{
-    Case, GlyphOutput, Mismatch, Oracle, OracleFailure, case_content_key, compare,
+    Case, GlyphOutput, Mismatch, Oracle, OracleActivity, OracleFailure, case_content_key, compare,
 };
 use parley_glyph_positioning_extract::{font_context, layout, parley_output};
 
-use crate::driver::{Config, Recorder, capture_with_retry};
+use crate::driver::{Config, Recorder, capture_output_with_retry};
 
 /// How many consecutive Chrome-capture failures make an [`OracleFailure`] fatal.
 ///
@@ -36,10 +36,10 @@ const MAX_CONSECUTIVE_FAILURES: u32 = 5;
 /// A Chrome-backed [`Oracle`]: captures (or reuses a cached capture of) Chrome's output
 /// for a candidate [`Case`], lays the same case out with Parley, and compares the two.
 ///
-/// One [`Recorder`] session and one Parley `FontContext`/`LayoutContext` are held for the
-/// whole batch of seeds a `minimise` run processes, and Chrome captures are cached by
-/// [`case_content_key`] across that whole batch — canonicalised candidates from different
-/// seeds converge, so later seeds in a run get cheaper and dedup falls out for free.
+/// One [`Recorder`] session and one Parley `FontContext`/`LayoutContext` are held per
+/// minimiser worker. Chrome captures are cached by [`case_content_key`] across that
+/// worker's seeds — canonicalised candidates can converge, so later seeds assigned to
+/// the same worker get cheaper and dedup falls out for free.
 #[expect(
     missing_debug_implementations,
     reason = "parley::FontContext and parley::LayoutContext do not implement Debug"
@@ -89,15 +89,17 @@ impl<'rt> ChromeOracle<'rt> {
             return Ok(cached.clone());
         }
 
-        let recording =
-            self.runtime
-                .block_on(capture_with_retry(&mut self.recorder, &self.config, case));
-        match recording {
-            Ok(recording) => {
+        let output = self.runtime.block_on(capture_output_with_retry(
+            &mut self.recorder,
+            &self.config,
+            case,
+        ));
+        match output {
+            Ok(output) => {
                 self.consecutive_failures = 0;
                 self.captures += 1;
-                self.cache.insert(key, recording.output.clone());
-                Ok(recording.output)
+                self.cache.insert(key, output.clone());
+                Ok(output)
             }
             Err(error) => {
                 self.consecutive_failures += 1;
@@ -124,5 +126,12 @@ impl Oracle for ChromeOracle<'_> {
         let laid_out = layout(case, &mut self.font_cx, &mut self.layout_cx);
         let parley = parley_output(&laid_out, case);
         Ok(compare(&parley, &chrome))
+    }
+
+    fn activity(&self) -> Option<OracleActivity> {
+        Some(OracleActivity {
+            captures: self.captures,
+            cache_hits: self.cache_hits,
+        })
     }
 }

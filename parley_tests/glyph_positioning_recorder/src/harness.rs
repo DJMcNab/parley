@@ -136,21 +136,20 @@ mod tests {
         }
     }
 
-    /// `renderAndCapture` gets the SKP directory from `shared.ts`'s `SKP_DIR` now,
-    /// not as a parameter — the driver's payload has shrunk to match (see
-    /// [`payload`]). This is the compile-time guard that the two stay in sync: if
-    /// `harness.ts` ever regains a `skpDir` parameter, this fails rather than the
-    /// mismatch surfacing as a confusing runtime argument-count error.
+    /// `renderAndCapture` gets the root SKP directory from `shared.ts`, plus the
+    /// driver-generated session ID needed to isolate concurrent browser instances.
     #[test]
-    fn harness_ts_takes_no_skp_dir_parameter() {
+    fn harness_ts_takes_capture_id_but_no_skp_dir_parameter() {
         assert!(
-            HARNESS_TS.contains("async function renderAndCapture(\n  payload: Payload,"),
+            HARNESS_TS.contains(
+                "async function renderAndCapture(\n  payload: Payload,\n  captureId: string,"
+            ),
             "renderAndCapture's signature changed in a way this pinning test didn't expect"
         );
         assert!(
             !HARNESS_TS.contains("skpDir"),
-            "renderAndCapture must not take a skpDir parameter: harness.ts imports SKP_DIR \
-             from shared.ts itself, and the driver's payload has no field for it"
+            "renderAndCapture must not take an arbitrary skpDir: harness.ts combines \
+             its fixed SKP_DIR with the driver's path-safe capture ID"
         );
     }
 }
