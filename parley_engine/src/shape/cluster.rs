@@ -8,12 +8,9 @@ use core::cmp::Ordering;
 
 use alloc::vec::Vec;
 use icu_normalizer::properties::Decomposed;
+use parley_emoji::{EmojiDFA, EmojiPresentationStyle, EmojiSegmentationCategory};
 
-use crate::{
-    CharInfo,
-    analysis::AnalysisDataSources,
-    emoji::{EmojiDFA, EmojiPresentationStyle, EmojiSegmentationCategory},
-};
+use crate::{CharInfo, analysis::AnalysisDataSources};
 
 #[derive(Debug, Default)]
 pub struct CharCluster {

@@ -24,6 +24,7 @@ complex-scripts = []
 fontique = { workspace = true }
 parlance = { workspace = true }
 parley_data = { workspace = true, features = ["baked"] }
+parley_emoji = { workspace = true }
 
 harfrust = { workspace = true }
 hashbrown = { workspace = true }

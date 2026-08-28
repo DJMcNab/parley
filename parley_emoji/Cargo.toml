@@ -1,0 +1,19 @@
+[package]
+name = "parley_emoji"
+version.workspace = true
+description = "Unicode emoji segmentation for Parley."
+keywords = ["text", "emoji", "segmentation"]
+categories = ["text-processing"]
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+repository.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+parley_data = { workspace = true, features = ["baked"] }
+
+[lints]
+workspace = true
