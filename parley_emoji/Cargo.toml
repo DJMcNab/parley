@@ -3,7 +3,7 @@ name = "parley_emoji"
 version.workspace = true
 description = "Unicode emoji segmentation for Parley."
 keywords = ["text", "emoji", "segmentation"]
-categories = ["text-processing"]
+categories = ["text-processing", "no-std"]
 edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
@@ -11,6 +11,11 @@ repository.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
+
+[features]
+default = ["std"]
+# This is currently unused and is provided for forward compatibility.
+std = []
 
 [dependencies]
 parley_data = { workspace = true, features = ["baked"] }
