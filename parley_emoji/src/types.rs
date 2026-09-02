@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: MIT
 // Adapted from <https://github.com/chansen/c-emoji>
 
-use parley_data::emoji::EmojiProperties;
-
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum EmojiState {
@@ -116,9 +114,21 @@ pub enum EmojiSegmentationCategory {
 }
 
 impl EmojiSegmentationCategory {
-    /// Returns the category of the given codepoint and properties.
+    /// Returns the category of the given codepoint and its [UTS #51 properties][props].
+    ///
+    /// The boolean arguments are the character's `Emoji`, `Emoji_Presentation`,
+    /// `Emoji_Modifier`, `Emoji_Modifier_Base` and `Regional_Indicator` properties.
+    ///
+    /// [props]: https://www.unicode.org/reports/tr51/#Emoji_Properties
     #[inline]
-    pub const fn from_codepoint(cp: u32, properties: EmojiProperties) -> Self {
+    pub const fn from_codepoint(
+        cp: u32,
+        is_emoji: bool,
+        is_emoji_presentation: bool,
+        is_emoji_modifier: bool,
+        is_emoji_modifier_base: bool,
+        is_regional_indicator: bool,
+    ) -> Self {
         match cp {
             0x30..=0x39 | 0x23 | 0x2A => Self::KeycapBase,
             0x200D => Self::Zwj,
@@ -129,23 +139,23 @@ impl EmojiSegmentationCategory {
             0xE0030..=0xE0039 | 0xE0061..=0xE007A => Self::TagSpec,
             0xE007F => Self::TagEnd,
             _ => {
-                if properties.is_regional_indicator() {
+                if is_regional_indicator {
                     return Self::RegionalIndicator;
                 }
 
-                if properties.is_emoji_modifier_base() {
+                if is_emoji_modifier_base {
                     return Self::EmojiModifierBase;
                 }
 
-                if properties.is_emoji_modifier() {
+                if is_emoji_modifier {
                     return Self::EmojiModifier;
                 }
 
-                if properties.is_emoji_presentation() {
+                if is_emoji_presentation {
                     return Self::EmojiPresentation;
                 }
 
-                if properties.is_emoji() {
+                if is_emoji {
                     return Self::Emoji;
                 }
 

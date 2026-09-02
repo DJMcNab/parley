@@ -30,13 +30,20 @@ fn assert_emoji(entity: TestEntity<'_>) {
         .enumerate()
         .map(|(i, cp)| {
             let ch = char::from_u32(cp).unwrap();
-            let emoji_properties = analysis.emoji_properties(ch);
+            let properties = analysis.properties(ch);
 
             if i == 0 {
-                leading_is_emoji_presentation = emoji_properties.is_emoji_presentation();
+                leading_is_emoji_presentation = properties.is_emoji_presentation();
             }
 
-            let category = EmojiSegmentationCategory::from_codepoint(cp, emoji_properties);
+            let category = EmojiSegmentationCategory::from_codepoint(
+                cp,
+                properties.is_emoji(),
+                properties.is_emoji_presentation(),
+                properties.is_emoji_modifier(),
+                properties.is_emoji_modifier_base(),
+                properties.is_region_indicator(),
+            );
 
             emoji_dfa.step_record(category);
 

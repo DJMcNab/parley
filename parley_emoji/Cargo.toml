@@ -17,8 +17,5 @@ default = ["std"]
 # This is currently unused and is provided for forward compatibility.
 std = []
 
-[dependencies]
-parley_data = { workspace = true, features = ["baked"] }
-
 [lints]
 workspace = true

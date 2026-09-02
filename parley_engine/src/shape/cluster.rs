@@ -361,11 +361,17 @@ impl CharCluster {
 
             if is_emoji {
                 if i == 0 {
-                    leading_is_emoji_presentation = info.emoji_properties.is_emoji_presentation();
+                    leading_is_emoji_presentation = info.is_emoji_presentation();
                 }
 
-                let category =
-                    EmojiSegmentationCategory::from_codepoint(ch as u32, info.emoji_properties);
+                let category = EmojiSegmentationCategory::from_codepoint(
+                    ch as u32,
+                    info.is_emoji(),
+                    info.is_emoji_presentation(),
+                    info.is_emoji_modifier(),
+                    info.is_emoji_modifier_base(),
+                    info.is_region_indicator(),
+                );
 
                 is_emoji_presentation_selector = category.is_presentation_selector();
 

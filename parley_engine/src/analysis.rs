@@ -23,7 +23,7 @@ use icu_segmenter::{
     LineSegmenterBorrowed, WordSegmenter, WordSegmenterBorrowed,
 };
 use parlance::{BaseDirection, BidiLevel, WordBreak};
-use parley_data::{Properties, emoji::EmojiProperties};
+use parley_data::Properties;
 
 use crate::bidi;
 use crate::break_overrides::LineBreakContext;
@@ -154,11 +154,6 @@ impl AnalysisDataSources {
     fn brackets(&self) -> CodePointMapDataBorrowed<'_, BidiMirroringGlyph> {
         const { CodePointMapData::new() }
     }
-
-    #[inline(always)]
-    pub const fn emoji_properties(&self, c: char) -> EmojiProperties {
-        EmojiProperties::get(c)
-    }
 }
 
 #[cfg(feature = "complex-scripts")]
@@ -186,36 +181,41 @@ pub struct CharInfo {
     pub bidi_class: icu_properties::props::BidiClass,
     /// Whether or not the character is a bracket, plus mirror data if so.
     pub bracket: BidiMirroringGlyph,
-    /// The emoji properties of this character.
-    pub emoji_properties: EmojiProperties,
-
-    flags: u8,
+    flags: u16,
 }
 
 impl CharInfo {
-    const VARIATION_SELECTOR_SHIFT: u8 = 0;
-    const REGION_INDICATOR_SHIFT: u8 = 1;
-    const CONTROL_SHIFT: u8 = 2;
-    const EMOJI_OR_PICTOGRAPH_SHIFT: u8 = 3;
-    const CONTRIBUTES_TO_SHAPING_SHIFT: u8 = 4;
-    const FORCE_NORMALIZE_SHIFT: u8 = 5;
-    const GRAPHEME_START_SHIFT: u8 = 6;
+    const VARIATION_SELECTOR_SHIFT: u16 = 0;
+    const REGION_INDICATOR_SHIFT: u16 = 1;
+    const CONTROL_SHIFT: u16 = 2;
+    const EMOJI_OR_PICTOGRAPH_SHIFT: u16 = 3;
+    const CONTRIBUTES_TO_SHAPING_SHIFT: u16 = 4;
+    const FORCE_NORMALIZE_SHIFT: u16 = 5;
+    const GRAPHEME_START_SHIFT: u16 = 6;
+    const EMOJI_SHIFT: u16 = 7;
+    const EMOJI_PRESENTATION_SHIFT: u16 = 8;
+    const EMOJI_MODIFIER_SHIFT: u16 = 9;
+    const EMOJI_MODIFIER_BASE_SHIFT: u16 = 10;
 
     #[allow(
         dead_code,
         reason = "To be used in more complete emoji checking, in select_font"
     )]
-    const VARIATION_SELECTOR_MASK: u8 = 1 << Self::VARIATION_SELECTOR_SHIFT;
+    const VARIATION_SELECTOR_MASK: u16 = 1 << Self::VARIATION_SELECTOR_SHIFT;
     #[allow(
         dead_code,
         reason = "To be used in more complete emoji checking, in select_font"
     )]
-    const REGION_INDICATOR_MASK: u8 = 1 << Self::REGION_INDICATOR_SHIFT;
-    const CONTROL_MASK: u8 = 1 << Self::CONTROL_SHIFT;
-    const EMOJI_OR_PICTOGRAPH_MASK: u8 = 1 << Self::EMOJI_OR_PICTOGRAPH_SHIFT;
-    const CONTRIBUTES_TO_SHAPING_MASK: u8 = 1 << Self::CONTRIBUTES_TO_SHAPING_SHIFT;
-    const FORCE_NORMALIZE_MASK: u8 = 1 << Self::FORCE_NORMALIZE_SHIFT;
-    const GRAPHEME_START_MASK: u8 = 1 << Self::GRAPHEME_START_SHIFT;
+    const REGION_INDICATOR_MASK: u16 = 1 << Self::REGION_INDICATOR_SHIFT;
+    const CONTROL_MASK: u16 = 1 << Self::CONTROL_SHIFT;
+    const EMOJI_OR_PICTOGRAPH_MASK: u16 = 1 << Self::EMOJI_OR_PICTOGRAPH_SHIFT;
+    const CONTRIBUTES_TO_SHAPING_MASK: u16 = 1 << Self::CONTRIBUTES_TO_SHAPING_SHIFT;
+    const FORCE_NORMALIZE_MASK: u16 = 1 << Self::FORCE_NORMALIZE_SHIFT;
+    const GRAPHEME_START_MASK: u16 = 1 << Self::GRAPHEME_START_SHIFT;
+    const EMOJI_MASK: u16 = 1 << Self::EMOJI_SHIFT;
+    const EMOJI_PRESENTATION_MASK: u16 = 1 << Self::EMOJI_PRESENTATION_SHIFT;
+    const EMOJI_MODIFIER_MASK: u16 = 1 << Self::EMOJI_MODIFIER_SHIFT;
+    const EMOJI_MODIFIER_BASE_MASK: u16 = 1 << Self::EMOJI_MODIFIER_BASE_SHIFT;
 
     fn new(
         boundary: Boundary,
@@ -223,7 +223,6 @@ impl CharInfo {
         grapheme_cluster_break: GraphemeClusterBreak,
         bidi_class: icu_properties::props::BidiClass,
         bracket: BidiMirroringGlyph,
-        emoji_properties: EmojiProperties,
         is_variation_selector: bool,
         is_region_indicator: bool,
         is_control: bool,
@@ -231,6 +230,10 @@ impl CharInfo {
         contributes_to_shaping: bool,
         force_normalize: bool,
         is_grapheme_start: bool,
+        is_emoji: bool,
+        is_emoji_presentation: bool,
+        is_emoji_modifier: bool,
+        is_emoji_modifier_base: bool,
     ) -> Self {
         Self {
             boundary,
@@ -238,14 +241,17 @@ impl CharInfo {
             grapheme_cluster_break,
             bidi_class,
             bracket,
-            emoji_properties,
-            flags: (is_variation_selector as u8) << Self::VARIATION_SELECTOR_SHIFT
-                | (is_region_indicator as u8) << Self::REGION_INDICATOR_SHIFT
-                | (is_control as u8) << Self::CONTROL_SHIFT
-                | (is_emoji_or_pictograph as u8) << Self::EMOJI_OR_PICTOGRAPH_SHIFT
-                | (contributes_to_shaping as u8) << Self::CONTRIBUTES_TO_SHAPING_SHIFT
-                | (force_normalize as u8) << Self::FORCE_NORMALIZE_SHIFT
-                | (is_grapheme_start as u8) << Self::GRAPHEME_START_SHIFT,
+            flags: (is_variation_selector as u16) << Self::VARIATION_SELECTOR_SHIFT
+                | (is_region_indicator as u16) << Self::REGION_INDICATOR_SHIFT
+                | (is_control as u16) << Self::CONTROL_SHIFT
+                | (is_emoji_or_pictograph as u16) << Self::EMOJI_OR_PICTOGRAPH_SHIFT
+                | (contributes_to_shaping as u16) << Self::CONTRIBUTES_TO_SHAPING_SHIFT
+                | (force_normalize as u16) << Self::FORCE_NORMALIZE_SHIFT
+                | (is_grapheme_start as u16) << Self::GRAPHEME_START_SHIFT
+                | (is_emoji as u16) << Self::EMOJI_SHIFT
+                | (is_emoji_presentation as u16) << Self::EMOJI_PRESENTATION_SHIFT
+                | (is_emoji_modifier as u16) << Self::EMOJI_MODIFIER_SHIFT
+                | (is_emoji_modifier_base as u16) << Self::EMOJI_MODIFIER_BASE_SHIFT,
         }
     }
 
@@ -271,6 +277,44 @@ impl CharInfo {
     #[inline(always)]
     pub fn is_emoji_or_pictograph(self) -> bool {
         self.flags & Self::EMOJI_OR_PICTOGRAPH_MASK != 0
+    }
+
+    /// Whether this character has the `Emoji` property ([UTS #51][]).
+    ///
+    /// Unlike [`is_emoji_or_pictograph`](Self::is_emoji_or_pictograph), this excludes
+    /// characters which are only `Extended_Pictographic`.
+    ///
+    /// [UTS #51]: https://www.unicode.org/reports/tr51/#Emoji_Properties
+    #[inline(always)]
+    pub fn is_emoji(self) -> bool {
+        self.flags & Self::EMOJI_MASK != 0
+    }
+
+    /// Whether this character has the `Emoji_Presentation` property ([UTS #51][]), i.e. it is
+    /// displayed as an emoji by default.
+    ///
+    /// [UTS #51]: https://www.unicode.org/reports/tr51/#Emoji_Properties
+    #[inline(always)]
+    pub fn is_emoji_presentation(self) -> bool {
+        self.flags & Self::EMOJI_PRESENTATION_MASK != 0
+    }
+
+    /// Whether this character has the `Emoji_Modifier` property ([UTS #51][]), i.e. it is a
+    /// skin tone modifier.
+    ///
+    /// [UTS #51]: https://www.unicode.org/reports/tr51/#Emoji_Properties
+    #[inline(always)]
+    pub fn is_emoji_modifier(self) -> bool {
+        self.flags & Self::EMOJI_MODIFIER_MASK != 0
+    }
+
+    /// Whether this character has the `Emoji_Modifier_Base` property ([UTS #51][]), i.e. it can
+    /// be followed by a skin tone modifier.
+    ///
+    /// [UTS #51]: https://www.unicode.org/reports/tr51/#Emoji_Properties
+    #[inline(always)]
+    pub fn is_emoji_modifier_base(self) -> bool {
+        self.flags & Self::EMOJI_MODIFIER_BASE_MASK != 0
     }
 
     /// Whether this character contributes glyphs to shaping (`false` for control characters and
@@ -624,7 +668,6 @@ pub(crate) fn analyze_text(
     });
 
     let properties = |c| data_sources.properties(c);
-    let emoji_properties = |c| data_sources.emoji_properties(c);
 
     let mut needs_bidi_resolution = false;
 
@@ -646,12 +689,6 @@ pub(crate) fn analyze_text(
                 let is_variation_selector = properties.is_variation_selector();
                 let is_region_indicator = properties.is_region_indicator();
                 let next_mandatory_linebreak = properties.is_mandatory_linebreak();
-
-                let emoji_properties = if is_emoji_or_pictograph {
-                    emoji_properties(ch)
-                } else {
-                    EmojiProperties::ZERO
-                };
 
                 let boundary = if is_mandatory_linebreak {
                     Boundary::Mandatory
@@ -682,7 +719,6 @@ pub(crate) fn analyze_text(
                     grapheme_cluster_break,
                     bidi_class,
                     bracket,
-                    emoji_properties,
                     is_variation_selector,
                     is_region_indicator,
                     general_category == GeneralCategory::Control,
@@ -690,6 +726,10 @@ pub(crate) fn analyze_text(
                     contributes_to_shaping(general_category, script),
                     force_normalize,
                     is_grapheme_start,
+                    properties.is_emoji(),
+                    properties.is_emoji_presentation(),
+                    properties.is_emoji_modifier(),
+                    properties.is_emoji_modifier_base(),
                 ));
 
                 next_mandatory_linebreak

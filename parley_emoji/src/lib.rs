@@ -5,7 +5,7 @@
 // After you edit the crate's doc comment, run this command, then check README.md for any missing links
 // cargo rdme --workspace-project=parley_emoji
 
-//! Emoji presentation resolution for text layout, adapted from Christian Hansen's c-emoji.
+//! Emoji presentation resolution for text layout, translated from Christian Hansen's [c-emoji].
 //!
 //! Some Unicode characters and sequences can be displayed either as ordinary
 //! text glyphs or as emoji. This crate determines the preferred presentation
