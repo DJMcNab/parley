@@ -25,7 +25,22 @@ See https://linebender.org/blog/doc-include/ for related discussion. -->
 
 <!-- cargo-rdme start -->
 
-Port of [c-emoji] (MIT) and follow the [UTS51](Unicode Technical Standard #51).
+Emoji presentation resolution for text layout, translated from Christian Hansen's [c-emoji].
+
+Some Unicode characters and sequences can be displayed either as ordinary
+text glyphs or as emoji. This crate determines the preferred presentation
+of a grapheme cluster from its Unicode emoji properties, variation selectors,
+and sequence structure. The implementation recognizes the emoji
+sequences defined by [Unicode Technical Standard #51][UTS51].
+
+WARNING: This crate is currently designed only for use within Parley;
+if you have a use case for it, please
+[reach out](https://xi.zulipchat.com/#narrow/channel/205635-parley).
+This crate exists entirely because the code it adapts doesn't match
+Parley's existing license, but is otherwise currently treated as an
+internal implementation detail of Parley.
+
+In Parley, this impacts font selection for these clusters.
 
 ## Features
 
@@ -33,7 +48,7 @@ The following crate [feature flags](https://doc.rust-lang.org/cargo/reference/fe
 
 - `std` (enabled by default): This is currently unused and is provided for forward compatibility.
 
-Note that Parley Emoji does require that an allocator is available (i.e. it uses [alloc][]).
+Note that Parley Emoji currently requires that an allocator is available (i.e. it uses [`alloc`][]).
 
 [c-emoji]: <https://github.com/chansen/c-emoji>
 [UTS51]: <https://www.unicode.org/reports/tr51/>

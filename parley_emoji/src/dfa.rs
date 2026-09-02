@@ -1,9 +1,6 @@
-// Copyright 2026 the Parley Authors
+// Copyright 2026 the Parley Authors and Christian Hansen
 // SPDX-License-Identifier: MIT
-
-// Copyright 2026 Christian Hansen
-// SPDX-License-Identifier: MIT
-// <https://github.com/chansen/c-emoji>
+// Adapted from <https://github.com/chansen/c-emoji>
 
 use super::types::{EmojiPresentationStyle, EmojiSegmentationCategory, EmojiSequence, EmojiState};
 

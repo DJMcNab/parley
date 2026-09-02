@@ -1,27 +1,26 @@
-// Copyright 2026 the Parley Authors
+// Copyright 2026 the Parley Authors and Christian Hansen
 // SPDX-License-Identifier: MIT
-
-// Copyright 2026 Christian Hansen
-// SPDX-License-Identifier: MIT
-// <https://github.com/chansen/c-emoji>
+// Adapted from <https://github.com/chansen/c-emoji>
 
 // After you edit the crate's doc comment, run this command, then check README.md for any missing links
 // cargo rdme --workspace-project=parley_emoji
 
-//! Emoji presentation resolution for text layout.
+//! Emoji presentation resolution for text layout, adapted from Christian Hansen's c-emoji.
 //!
 //! Some Unicode characters and sequences can be displayed either as ordinary
 //! text glyphs or as emoji. This crate determines the preferred presentation
-//! of an already-delimited text cluster from its Unicode emoji properties,
-//! variation selectors, and sequence structure.
+//! of a grapheme cluster from its Unicode emoji properties, variation selectors,
+//! and sequence structure. The implementation recognizes the emoji
+//! sequences defined by [Unicode Technical Standard #51][UTS51].
 //!
-//! In Parley, this happens before font selection. Clusters with emoji
-//! presentation can use an emoji font fallback, while clusters with text
-//! presentation remain in the ordinary text font stack.
+//! WARNING: This crate is currently designed only for use within Parley;
+//! if you have a use case for it, please
+//! [reach out](https://xi.zulipchat.com/#narrow/channel/205635-parley).
+//! This crate exists entirely because the code it adapts doesn't match
+//! Parley's existing license, but is otherwise currently treated as an
+//! internal implementation detail of Parley.
 //!
-//! The implementation recognizes the structural emoji sequences defined by
-//! [Unicode Technical Standard #51][UTS51] using a DFA based on [c-emoji][].
-//! It does not perform grapheme segmentation, font selection, or shaping.
+//! In Parley, this impacts font selection for these clusters.
 //!
 //! # Features
 //!
@@ -29,7 +28,7 @@
 //!
 //! - `std` (enabled by default): This is currently unused and is provided for forward compatibility.
 //!
-//! Note that Parley Emoji does require that an allocator is available (i.e. it uses [`alloc`][]).
+//! Note that Parley Emoji currently requires that an allocator is available (i.e. it uses [`alloc`][]).
 //!
 //! [c-emoji]: <https://github.com/chansen/c-emoji>
 //! [UTS51]: <https://www.unicode.org/reports/tr51/>
