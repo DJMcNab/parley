@@ -1,4 +1,4 @@
-// Copyright 2026 the Parley Authors and Christian Hansen
+// Copyright 2026 Christian Hansen and the Parley Authors
 // SPDX-License-Identifier: MIT
 // Adapted from <https://github.com/chansen/c-emoji>
 
