@@ -1,4 +1,4 @@
-// Copyright 2026 the Parley Authors and Christian Hansen
+// Copyright 2026 Christian Hansen and the Parley Authors
 // SPDX-License-Identifier: MIT
 
 // Adapted from <https://github.com/chansen/c-emoji>
@@ -184,7 +184,7 @@ impl EmojiDFA {
 
     /// Return the [`EmojiSequence`].
     ///
-    /// <https://www.unicode.org/reports/tr51/#Emoji_Sequences>
+    /// <https://www.unicode.org/reports/tr51/tr51-29.html#Emoji_Sequences>
     #[inline]
     const fn sequence(self) -> EmojiSequence {
         if self.contains_category(EmojiSegmentationCategory::Zwj) {
@@ -218,7 +218,7 @@ impl EmojiDFA {
 
     /// Returns the emoji presentation style.
     ///
-    /// <https://www.unicode.org/reports/tr51/#Presentation_Style>
+    /// <https://www.unicode.org/reports/tr51/tr51-29.html#Presentation_Style>
     #[inline]
     pub const fn presentation_style(
         self,
@@ -244,8 +244,8 @@ impl EmojiDFA {
     /// - `emoji_character + VS15`
     /// - `emoji_character + VS16`
     ///
-    /// <https://www.unicode.org/reports/tr51/#def_text_presentation_selector>
-    /// <https://www.unicode.org/reports/tr51/#def_emoji_presentation_selector>
+    /// <https://www.unicode.org/reports/tr51/tr51-29.html#def_text_presentation_selector>
+    /// <https://www.unicode.org/reports/tr51/tr51-29.html#def_emoji_presentation_selector>
     #[inline]
     pub const fn has_vs(self) -> bool {
         match self.sequence() {
