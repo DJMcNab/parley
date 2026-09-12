@@ -4,14 +4,17 @@
 
 use super::types::{EmojiPresentationStyle, EmojiSegmentationCategory, EmojiSequence, EmojiState};
 
+const N_STATES: usize = 13;
+const N_CATEGORIES: usize = 14;
+
 /// The transition table for Emoji DFA.
 ///
 /// <https://unicode.org/reports/tr51/#Definitions>
-static DFA_TRANS: [[u8; 13]; 13] = {
+static DFA_TRANS: [[u8; N_CATEGORIES]; N_STATES] = {
     use EmojiSegmentationCategory as Category;
     use EmojiState as State;
 
-    let mut t = [[State::Reject as u8; 13]; 13];
+    let mut t = [[State::Reject as u8; N_CATEGORIES]; N_STATES];
 
     /// Adds a state transition to the DFA transition table.
     macro_rules! add {
