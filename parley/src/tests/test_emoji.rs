@@ -3,11 +3,9 @@
 
 use alloc::vec::Vec;
 use core::char;
+use parley_engine::AnalysisDataSources;
 
-use crate::{
-    AnalysisDataSources,
-    emoji::{EmojiDFA, EmojiPresentationStyle, EmojiSegmentationCategory},
-};
+use crate::emoji::{EmojiDFA, EmojiPresentationStyle, EmojiSegmentationCategory};
 
 struct TestEntity<'a> {
     sequence: &'a [u32],
