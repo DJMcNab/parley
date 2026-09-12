@@ -1,7 +1,7 @@
 [package]
 name = "parley_emoji"
 version.workspace = true
-description = "Unicode emoji segmentation for Parley."
+description = "Emoji presentation resolution for text layout in Parley."
 keywords = ["text", "emoji", "segmentation"]
 categories = ["text-processing", "no-std"]
 edition.workspace = true

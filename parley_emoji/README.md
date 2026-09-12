@@ -2,7 +2,7 @@
 
 # Parley Emoji
 
-**Unicode emoji segmentation**
+**Unicode emoji presentation resolution**
 
 [![Latest published version.](https://img.shields.io/crates/v/parley_emoji.svg)](https://crates.io/crates/parley_emoji)
 [![Documentation build status.](https://img.shields.io/docsrs/parley_emoji.svg)](https://docs.rs/parley_emoji)

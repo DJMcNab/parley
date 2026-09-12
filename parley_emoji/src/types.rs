@@ -1,5 +1,6 @@
 // Copyright 2026 Christian Hansen and the Parley Authors
 // SPDX-License-Identifier: MIT
+
 // Adapted from <https://github.com/chansen/c-emoji>
 
 #[repr(u8)]
@@ -119,7 +120,7 @@ impl EmojiSegmentationCategory {
     /// The boolean arguments are the character's `Emoji`, `Emoji_Presentation`,
     /// `Emoji_Modifier`, `Emoji_Modifier_Base` and `Regional_Indicator` properties.
     ///
-    /// [props]: https://www.unicode.org/reports/tr51/#Emoji_Properties
+    /// [props]: https://www.unicode.org/reports/tr51/tr51-29.html#Emoji_Properties
     #[inline]
     pub const fn from_codepoint(
         cp: u32,
@@ -176,7 +177,7 @@ impl EmojiSegmentationCategory {
 
 /// Represents the category of an emoji sequence.
 ///
-/// <https://www.unicode.org/reports/tr51/#Emoji_Sequences>
+/// <https://www.unicode.org/reports/tr51/tr51-29.html#Emoji_Sequences>
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) enum EmojiSequence {
@@ -184,29 +185,29 @@ pub(crate) enum EmojiSequence {
     Basic,
     /// Emoji modifier sequence
     ///
-    /// <https://www.unicode.org/reports/tr51/#def_emoji_modifier_sequence>
+    /// <https://www.unicode.org/reports/tr51/tr51-29.html#def_emoji_modifier_sequence>
     Modifier,
     /// Emoji flag sequence
     ///
-    /// <https://www.unicode.org/reports/tr51/#def_emoji_flag_sequence>
+    /// <https://www.unicode.org/reports/tr51/tr51-29.html#def_emoji_flag_sequence>
     Flag,
     /// Emoji tag sequence
     ///
-    /// <https://www.unicode.org/reports/tr51/#def_emoji_tag_sequence>
+    /// <https://www.unicode.org/reports/tr51/tr51-29.html#def_emoji_tag_sequence>
     Tag,
     /// Emoji keycap sequence
     ///
-    /// <https://www.unicode.org/reports/tr51/#def_emoji_keycap_sequence>
+    /// <https://www.unicode.org/reports/tr51/tr51-29.html#def_emoji_keycap_sequence>
     Keycap,
     /// Emoji ZWJ sequence
     ///
-    /// <https://www.unicode.org/reports/tr51/#def_emoji_zwj_sequence>
+    /// <https://www.unicode.org/reports/tr51/tr51-29.html#def_emoji_zwj_sequence>
     Zwj,
 }
 
 /// Represents presentation style for displaying emojis.
 ///
-/// <https://www.unicode.org/reports/tr51/tr51-30.html#Presentation_Style>
+/// <https://www.unicode.org/reports/tr51/tr51-29.html#Presentation_Style>
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Default, Debug)]
 pub enum EmojiPresentationStyle {

@@ -1,5 +1,6 @@
 // Copyright 2026 Christian Hansen and the Parley Authors
 // SPDX-License-Identifier: MIT
+
 // Adapted from <https://github.com/chansen/c-emoji>
 
 // After you edit the crate's doc comment, run this command, then check README.md for any missing links

@@ -284,7 +284,7 @@ impl CharInfo {
     /// Unlike [`is_emoji_or_pictograph`](Self::is_emoji_or_pictograph), this excludes
     /// characters which are only `Extended_Pictographic`.
     ///
-    /// [UTS #51]: https://www.unicode.org/reports/tr51/#Emoji_Properties
+    /// [UTS #51]: https://www.unicode.org/reports/tr51/tr51-29.html#Emoji_Properties
     #[inline(always)]
     pub fn is_emoji(self) -> bool {
         self.flags & Self::EMOJI_MASK != 0
@@ -293,7 +293,7 @@ impl CharInfo {
     /// Whether this character has the `Emoji_Presentation` property ([UTS #51][]), i.e. it is
     /// displayed as an emoji by default.
     ///
-    /// [UTS #51]: https://www.unicode.org/reports/tr51/#Emoji_Properties
+    /// [UTS #51]: https://www.unicode.org/reports/tr51/tr51-29.html#Emoji_Properties
     #[inline(always)]
     pub fn is_emoji_presentation(self) -> bool {
         self.flags & Self::EMOJI_PRESENTATION_MASK != 0
@@ -302,7 +302,7 @@ impl CharInfo {
     /// Whether this character has the `Emoji_Modifier` property ([UTS #51][]), i.e. it is a
     /// skin tone modifier.
     ///
-    /// [UTS #51]: https://www.unicode.org/reports/tr51/#Emoji_Properties
+    /// [UTS #51]: https://www.unicode.org/reports/tr51/tr51-29.html#Emoji_Properties
     #[inline(always)]
     pub fn is_emoji_modifier(self) -> bool {
         self.flags & Self::EMOJI_MODIFIER_MASK != 0
@@ -311,7 +311,7 @@ impl CharInfo {
     /// Whether this character has the `Emoji_Modifier_Base` property ([UTS #51][]), i.e. it can
     /// be followed by a skin tone modifier.
     ///
-    /// [UTS #51]: https://www.unicode.org/reports/tr51/#Emoji_Properties
+    /// [UTS #51]: https://www.unicode.org/reports/tr51/tr51-29.html#Emoji_Properties
     #[inline(always)]
     pub fn is_emoji_modifier_base(self) -> bool {
         self.flags & Self::EMOJI_MODIFIER_BASE_MASK != 0
