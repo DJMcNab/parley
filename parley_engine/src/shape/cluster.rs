@@ -539,8 +539,7 @@ impl<'a> Mapper<'a> {
     fn coverage(&self, covers: &impl Fn(char) -> bool) -> Coverage {
         let mut mapped: u8 = 0;
         for c in self.chars.iter() {
-            // If the color emoji has a presentation style, ignore the variation selector.
-            if c.is_emoji_presentation_selector || (c.contributes_to_shaping && covers(c.ch)) {
+            if c.contributes_to_shaping && covers(c.ch) {
                 mapped = mapped.saturating_add(1);
             }
         }
