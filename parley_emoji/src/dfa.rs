@@ -54,6 +54,8 @@ static DFA_TRANS: [[u8; N_CATEGORIES]; N_STATES] = {
             State::EmojiModifierBase
         );
 
+        add!(State::EmojiModifierBase, Category::Vs15, State::Terminal);
+        // TODO: Handle: https://www.unicode.org/reports/tr51/tr51-29.html#def_text_presentation_sequence:~:text=However%2C%20some%20older,should%20be%20ignored.
         add!(State::EmojiModifierBase, Category::Vs16, State::OptionalZwj);
         add!(State::EmojiModifierBase, Category::Zwj, State::Zwj);
         add!(
