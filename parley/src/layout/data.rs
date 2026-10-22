@@ -94,8 +94,8 @@ pub(crate) struct LineData {
     pub(crate) justification: Range<u32>,
     /// Expansion per justification opportunity; alignment only mutates this scalar.
     pub(crate) justification_amount: f32,
-    /// The start of the logically first atom excluded from justification, including an atom
-    /// that hangs only partially (e.g. a trailing NBSP that does not itself hang).
+    /// The start of the logically first hanging atom (even partially), or trailing word separator.
+    /// Non-hanging terminal atoms can still own expansion on their visual before side.
     pub(crate) justification_end_cluster: u32,
     /// This line's entries in [`LayoutData::aligned_subtree_offsets`].
     ///

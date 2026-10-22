@@ -15,7 +15,7 @@ use crate::layout::data::{AlignedSubtreeOffset, run_box_metrics};
 use crate::layout::justification::Justification;
 use crate::layout::spacing::EffectiveSpacing;
 use crate::layout::style_metrics::{BoxMetrics, StyleMetrics, inline_box_placement};
-use crate::layout::whitespace::atom_hanging_advance;
+use crate::layout::whitespace::{atom_hanging_advance, whitespace_hangs};
 use crate::layout::{
     BreakReason, Layout, LayoutData, LayoutItem, LayoutItemKind, LineData, LineItemData,
     LineMetrics, Run,
@@ -1838,7 +1838,7 @@ fn commit_line<B: Brush>(
 }
 
 /// Returns the advance of the whitespace hanging past the end of the line made up of `line_items`,
-/// the index one past its logically last shaped cluster that's eligible for justification (see
+/// and the start of the logically first atom excluded from justification (see
 /// [`LineData::justification_end_cluster`]).
 ///
 /// `line_items` must be in logical order.
@@ -1931,9 +1931,23 @@ fn hanging_whitespace<B: Brush>(
                         }
                     }
                     hanging_whitespace_advance += hanging;
-                    // Justification can't stretch within an atom, so it stops at the start of the
-                    // last atom that hangs in its entirety or only partially.
-                    justification_end_cluster = atom.shaped_clusters_range().start;
+                    // A non-hanging final CJ atom must still be allowed to own a before gap.
+                    // Trailing word separators remain excluded even when they do not hang (NBSP).
+                    let ends_in_hanging_whitespace = slice
+                        .characters_in(atom.shaped_clusters().last().unwrap().chars_range())
+                        .iter()
+                        .all(|ch| {
+                            whitespace_hangs(
+                                ch.whitespace,
+                                &layout.data.styles[ch.style_index as usize],
+                            )
+                        });
+                    if ends_in_hanging_whitespace
+                        || matches!(whitespace, Whitespace::Space | Whitespace::NoBreakSpace)
+                    {
+                        // An atom that hangs even partially cannot be stretched.
+                        justification_end_cluster = atom.shaped_clusters_range().start;
+                    }
                     if !all_hang {
                         break 'items;
                     }

@@ -14,10 +14,6 @@ use super::spacing::{Gaps, is_word_separator};
 #[repr(u8)]
 enum Share {
     None,
-    #[expect(
-        dead_code,
-        reason = "Reserved for shared boundary ownership in CJ justification"
-    )]
     Half,
     Whole,
 }
@@ -49,6 +45,59 @@ impl Record {
     }
 }
 
+/// Only non-transparent atoms enter the boundary walk. Inline boxes are opaque and have no record.
+#[derive(Clone, Copy)]
+enum Class {
+    Edge,
+    Space,
+    Expandable,
+    Opaque,
+}
+
+/// Keep one unfinished record: its before share is known on arrival, its after share on departure.
+struct Walk<'a> {
+    records: &'a mut Vec<Record>,
+    previous: Class,
+    pending: Option<Record>,
+}
+
+impl Walk<'_> {
+    fn push(&mut self, class: Class, cluster: u32) {
+        let (after, before) = match (self.previous, class) {
+            (Class::Expandable, Class::Expandable) => (Share::Half, Share::Half),
+            (Class::Expandable, Class::Opaque) => (Share::Whole, Share::None),
+            (Class::Opaque, Class::Expandable) => (Share::None, Share::Whole),
+            _ => (Share::None, Share::None),
+        };
+        if let Some(record) = &mut self.pending
+            && after != Share::None
+        {
+            record.after = after;
+        }
+        self.flush();
+        self.pending = Some(Record {
+            cluster,
+            before,
+            // Preserve inter-word ownership, including RTL separators at the visual line end.
+            // Hanging separators have already been classified as Edge.
+            after: if matches!(class, Class::Space) {
+                Share::Whole
+            } else {
+                Share::None
+            },
+        });
+        self.previous = class;
+    }
+
+    fn flush(&mut self) {
+        if let Some(record) = self.pending.take()
+            && (record.before != Share::None || record.after != Share::None)
+        {
+            self.records.push(record);
+        }
+    }
+}
+
 /// Layout-owned storage. Clearing retains capacity across line breaking.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct JustificationLedger {
@@ -62,9 +111,7 @@ impl JustificationLedger {
         self.built = false;
     }
 
-    /// Walk each line's atoms in visual order. Only word separators own opportunities for now:
-    /// each non-hanging separator owns one whole opportunity visually after itself, independently
-    /// of its neighbours. No eligibility decisions are made by consumers of the resulting ledger.
+    /// Walk visual boundaries once; consumers only read the resulting ownership decisions.
     pub(crate) fn build(
         &mut self,
         shaped_text: &ShapedText,
@@ -76,6 +123,11 @@ impl JustificationLedger {
         }
         for line in lines {
             let start = self.records.len();
+            let mut walk = Walk {
+                records: &mut self.records,
+                previous: Class::Edge,
+                pending: None,
+            };
             for item in &line_items[line.item_range.clone()] {
                 if item.kind != LayoutItemKind::TextRun {
                     continue;
@@ -94,17 +146,25 @@ impl JustificationLedger {
                     atoms.next()
                 } {
                     let cluster = atom.shaped_clusters_range().start;
-                    if cluster < line.justification_end_cluster
-                        && is_word_separator(atom.characters()[0].whitespace)
-                    {
-                        self.records.push(Record {
-                            cluster,
-                            before: Share::None,
-                            after: Share::Whole,
-                        });
-                    }
+                    let first = &atom.characters()[0];
+                    let class = if cluster >= line.justification_end_cluster {
+                        Class::Edge
+                    } else if atom.is_inline_object() {
+                        Class::Opaque
+                    } else if is_word_separator(first.whitespace) {
+                        Class::Space
+                    } else if first.flags.is_justify_expandable() {
+                        Class::Expandable
+                    } else if first.flags.is_default_ignorable() && atom.advance() == 0. {
+                        // A zero-width ignorable does not interrupt visual adjacency.
+                        continue;
+                    } else {
+                        Class::Opaque
+                    };
+                    walk.push(class, cluster);
                 }
             }
+            walk.flush();
             self.records[start..].sort_unstable_by_key(|record| record.cluster);
             line.justification =
                 u32::try_from(start).unwrap()..u32::try_from(self.records.len()).unwrap();

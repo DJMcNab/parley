@@ -317,6 +317,8 @@ impl SegmenterKey {
     }
 }
 
+mod justification;
+
 /// Per-character analysis info.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct CharInfo {
@@ -341,6 +343,7 @@ impl CharInfo {
     const EMOJI_MODIFIER_BASE_SHIFT: u16 = 12;
     const INLINE_OBJECT_SHIFT: u16 = 13;
     const DEFAULT_IGNORABLE_SHIFT: u16 = 14;
+    const JUSTIFY_EXPANDABLE_SHIFT: u16 = 15;
 
     const VARIATION_SELECTOR_MASK: u16 = 1 << Self::VARIATION_SELECTOR_SHIFT;
     const REGION_INDICATOR_MASK: u16 = 1 << Self::REGION_INDICATOR_SHIFT;
@@ -357,6 +360,7 @@ impl CharInfo {
     const EMOJI_MODIFIER_BASE_MASK: u16 = 1 << Self::EMOJI_MODIFIER_BASE_SHIFT;
     const INLINE_OBJECT_MASK: u16 = 1 << Self::INLINE_OBJECT_SHIFT;
     const DEFAULT_IGNORABLE_MASK: u16 = 1 << Self::DEFAULT_IGNORABLE_SHIFT;
+    const JUSTIFY_EXPANDABLE_MASK: u16 = 1 << Self::JUSTIFY_EXPANDABLE_SHIFT;
 
     fn new(
         script: Script,
@@ -374,6 +378,7 @@ impl CharInfo {
         is_emoji_modifier: bool,
         is_emoji_modifier_base: bool,
         is_default_ignorable: bool,
+        is_justify_expandable: bool,
     ) -> Self {
         Self {
             script,
@@ -390,7 +395,8 @@ impl CharInfo {
                 | (is_emoji_presentation as u16) << Self::EMOJI_PRESENTATION_SHIFT
                 | (is_emoji_modifier as u16) << Self::EMOJI_MODIFIER_SHIFT
                 | (is_emoji_modifier_base as u16) << Self::EMOJI_MODIFIER_BASE_SHIFT
-                | (is_default_ignorable as u16) << Self::DEFAULT_IGNORABLE_SHIFT,
+                | (is_default_ignorable as u16) << Self::DEFAULT_IGNORABLE_SHIFT
+                | (is_justify_expandable as u16) << Self::JUSTIFY_EXPANDABLE_SHIFT,
         }
     }
 
@@ -466,6 +472,12 @@ impl CharInfo {
     #[inline(always)]
     pub fn is_default_ignorable(self) -> bool {
         self.flags & Self::DEFAULT_IGNORABLE_MASK != 0
+    }
+
+    /// Whether this character may own expansion at an adjacent justification boundary.
+    #[inline(always)]
+    pub fn is_justify_expandable(self) -> bool {
+        self.flags & Self::JUSTIFY_EXPANDABLE_MASK != 0
     }
 
     /// Whether this character contributes glyphs to shaping (`false` for control characters and
@@ -936,6 +948,7 @@ pub(crate) fn analyze_text(
             properties.is_emoji_modifier(),
             properties.is_emoji_modifier_base(),
             properties.is_default_ignorable(),
+            justification::is_justify_expandable(ch),
         ));
     }
 
@@ -1083,6 +1096,25 @@ mod test {
     use alloc::vec::Vec;
     use icu_segmenter::WordSegmenter;
     use icu_segmenter::options::WordBreakInvariantOptions;
+
+    #[test]
+    fn justification_eligibility_survives_analysis() {
+        let text = "a漢字、。　한 \u{a0}😀♀\u{200d}\u{fe0f}";
+        let mut analysis = super::Analysis::default();
+        crate::Analyzer::default().analyze(
+            text,
+            &crate::AnalysisOptions::default(),
+            &mut analysis,
+            &super::AnalysisDataSources::default(),
+        );
+        for (ch, info) in text.chars().zip(&analysis.info) {
+            assert_eq!(
+                info.is_justify_expandable(),
+                super::justification::is_justify_expandable(ch),
+                "{ch:?}"
+            );
+        }
+    }
 
     /// For some characters, determining word boundaries requires a dictionary lookup.
     ///

@@ -337,6 +337,8 @@ impl CharacterFlags {
     const INLINE_OBJECT: u8 = 1 << 5;
     /// Whether the character has the `Default_Ignorable_Code_Point` unicode property.
     const DEFAULT_IGNORABLE: u8 = 1 << 6;
+    /// Whether the character may own expansion at an adjacent justification boundary.
+    const JUSTIFY_EXPANDABLE: u8 = 1 << 7;
 
     #[inline(always)]
     pub(crate) fn new(
@@ -344,6 +346,7 @@ impl CharacterFlags {
         is_word_boundary: bool,
         is_soft_wrap_opportunity: bool,
         is_default_ignorable: bool,
+        is_justify_expandable: bool,
     ) -> Self {
         // TODO: Defer to ICU4X properties (see: https://docs.rs/icu/latest/icu/properties/props/struct.Emoji.html).
         let is_emoji = matches!(source_char as u32, 0x1F600..=0x1F64F | 0x1F300..=0x1F5FF | 0x1F680..=0x1F6FF | 0x2600..=0x26FF | 0x2700..=0x27BF);
@@ -367,6 +370,11 @@ impl CharacterFlags {
                 }
                 | if is_default_ignorable {
                     Self::DEFAULT_IGNORABLE
+                } else {
+                    0
+                }
+                | if is_justify_expandable {
+                    Self::JUSTIFY_EXPANDABLE
                 } else {
                     0
                 },
@@ -404,6 +412,12 @@ impl CharacterFlags {
     #[inline(always)]
     pub fn is_default_ignorable(self) -> bool {
         self.0 & Self::DEFAULT_IGNORABLE != 0
+    }
+
+    /// Whether this character may own expansion at an adjacent justification boundary.
+    #[inline(always)]
+    pub fn is_justify_expandable(self) -> bool {
+        self.0 & Self::JUSTIFY_EXPANDABLE != 0
     }
 
     /// Returns these flags, marking whether the character stands in for an inline object.
@@ -454,15 +468,17 @@ mod tests {
             ('\u{2600}', 3, true),
             ('\u{1F600}', 4, true),
         ] {
-            for bits in 0..8_u8 {
+            for bits in 0..16_u8 {
                 let is_word_boundary = bits & 1 != 0;
                 let is_soft_wrap_opportunity = bits & 2 != 0;
                 let is_default_ignorable = bits & 4 != 0;
+                let is_justify_expandable = bits & 8 != 0;
                 let flags = CharacterFlags::new(
                     ch,
                     is_word_boundary,
                     is_soft_wrap_opportunity,
                     is_default_ignorable,
+                    is_justify_expandable,
                 );
                 assert_eq!(flags.len_utf8(), len, "{ch:?}");
                 assert_eq!(flags.is_emoji(), emoji, "{ch:?}");
@@ -473,13 +489,18 @@ mod tests {
                     "{ch:?}"
                 );
                 assert_eq!(flags.is_default_ignorable(), is_default_ignorable, "{ch:?}");
+                assert_eq!(
+                    flags.is_justify_expandable(),
+                    is_justify_expandable,
+                    "{ch:?}"
+                );
             }
 
             let character = Character {
                 text_byte_start: 3,
                 style_index: 7,
                 whitespace: Whitespace::from_char(ch),
-                flags: CharacterFlags::new(ch, false, false, false),
+                flags: CharacterFlags::new(ch, false, false, false, false),
                 grapheme_start: true,
             };
             assert_eq!(character.text_byte_range(), 3..3 + len, "{ch:?}");

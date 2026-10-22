@@ -51,3 +51,10 @@ cargo xtask dead-snapshots
 
 The `lines.html` file can be used to generate images roughly similar to the ones in `test_lines.rs`.
 It can be used to verify existing test goals or to create additional tests.
+
+## Matching Chrome in CJ justification
+
+Open `justification.html` to compare the single-line fixtures in `tests/justification.rs`.
+It uses `text-align-last: justify` and widths twice the natural text advance, matching the Rust fixtures.
+The Google Fonts Noto Sans JP font substitutes for the local Noto CJK SC subset, so outlines may differ.
+Mixed-direction cases are best-effort and do not claim Chrome parity.

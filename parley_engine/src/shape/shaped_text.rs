@@ -387,6 +387,7 @@ impl ShapedText {
                     info.is_word_boundary(),
                     info.is_soft_wrap_opportunity(),
                     info.is_default_ignorable(),
+                    info.is_justify_expandable(),
                 )
                 .with_inline_object(info.is_inline_object()),
                 grapheme_start: info.is_grapheme_start(),
