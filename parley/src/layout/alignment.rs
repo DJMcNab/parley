@@ -73,11 +73,17 @@ pub(crate) fn align<B: Brush>(
 ) {
     layout.alignment = Some(alignment);
 
+    if alignment == Alignment::Justify || options.last_line_alignment == Some(Alignment::Justify) {
+        layout
+            .justification
+            .build(&layout.shaped_text, &layout.line_items, &mut layout.lines);
+    }
+
     let is_rtl = layout.base_level.is_rtl();
 
     // Apply alignment to line items
     for line in &mut layout.lines {
-        line.justification.amount_per_opportunity = 0.;
+        line.justification_amount = 0.;
 
         let indent = line.metrics.indent;
 
@@ -132,15 +138,15 @@ pub(crate) fn align<B: Brush>(
                 // Justified alignment doesn't apply if there are no whitespace gaps to adjust. In
                 // that case, start-align, i.e., left-align for LTR text and right-align for RTL
                 // text.
-                if line.num_justification_opportunities == 0 {
+                let opportunities = layout.justification.line(line).opportunities();
+                if opportunities == 0. {
                     if is_rtl {
                         line.metrics.offset += free_space;
                     }
                     continue;
                 }
 
-                line.justification.amount_per_opportunity =
-                    free_space / line.num_justification_opportunities as f32;
+                line.justification_amount = free_space / opportunities;
             }
         }
     }

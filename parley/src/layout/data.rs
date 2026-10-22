@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use crate::inline_box::LayoutInlineBox;
-use crate::layout::spacing::{Justification, Spacing};
+use crate::layout::justification::JustificationLedger;
+use crate::layout::spacing::Spacing;
 use crate::layout::style_metrics::{BoxMetrics, StyleMetrics, inline_box_placement};
 use crate::layout::whitespace::whitespace_hangs;
 use crate::layout::{ContentWidths, LineMetrics, Style};
@@ -89,9 +90,13 @@ pub(crate) struct LineData {
     pub(crate) break_reason: BreakReason,
     /// Maximum advance for the line.
     pub(crate) max_advance: f32,
-    /// The number of justification opportunities on the line.
-    pub(crate) num_justification_opportunities: u32,
-    pub(crate) justification: Justification,
+    /// This line's records in the layout's justification ledger.
+    pub(crate) justification: Range<u32>,
+    /// Expansion per justification opportunity; alignment only mutates this scalar.
+    pub(crate) justification_amount: f32,
+    /// The start of the logically first atom excluded from justification, including an atom
+    /// that hangs only partially (e.g. a trailing NBSP that does not itself hang).
+    pub(crate) justification_end_cluster: u32,
     /// This line's entries in [`LayoutData::aligned_subtree_offsets`].
     ///
     /// Empty for lines with only baseline-relative content because the root aligned subtree
@@ -218,6 +223,7 @@ pub(crate) struct LayoutData<B: Brush> {
     ///
     /// Each line owns a contiguous slice ([`LineData::aligned_subtree_offsets`]).
     pub(crate) aligned_subtree_offsets: Vec<AlignedSubtreeOffset>,
+    pub(crate) justification: JustificationLedger,
     /// The width constraint that was used to line break the layout
     pub(crate) layout_max_advance: f32,
     /// The computed width of the layout excluding hanging whitespace
@@ -255,6 +261,7 @@ impl<B: Brush> Default for LayoutData<B> {
             lines: Vec::new(),
             line_items: Vec::new(),
             aligned_subtree_offsets: Vec::new(),
+            justification: JustificationLedger::default(),
             alignment: None,
             layout_max_advance: 0.0,
             indent_amount: 0.0,
@@ -284,6 +291,7 @@ impl<B: Brush> LayoutData<B> {
         self.lines.clear();
         self.line_items.clear();
         self.aligned_subtree_offsets.clear();
+        self.justification.clear();
         self.alignment = None;
     }
 
