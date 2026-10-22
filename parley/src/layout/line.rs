@@ -6,7 +6,7 @@ use crate::layout::data::BreakReason;
 use crate::layout::data::{LayoutItemKind, LineData};
 use crate::layout::layout::Layout;
 use crate::layout::run::Run;
-use crate::layout::spacing::EffectiveSpacing;
+use crate::layout::spacing::EffectiveSpacingCursor;
 use crate::layout::{SpanMetrics, Style};
 use crate::style::Brush;
 use crate::{BaselineShift, InlineBoxKind};
@@ -363,7 +363,7 @@ impl<'a, B: Brush> GlyphRun<'a, B> {
 #[derive(Clone)]
 struct AtomIter<'a> {
     atoms: Atoms<'a>,
-    spacing: EffectiveSpacing,
+    spacing: EffectiveSpacingCursor<'a>,
     is_rtl: bool,
     /// The next atom in visual order, if it has been peeked but not yet consumed.
     peeked: Option<Atom<'a>>,
@@ -379,7 +379,7 @@ impl<'a> AtomIter<'a> {
             } else {
                 slice.atoms_start()
             },
-            spacing: run.line_spacing(),
+            spacing: run.line_spacing().cursor(is_rtl),
             is_rtl,
             peeked: None,
         }
@@ -406,7 +406,7 @@ impl<'a> AtomIter<'a> {
     /// The number of glyphs in `atom` and the sum of their advances (including spacing gaps),
     /// matching what [`Run::glyphs_in`] yields for the atom's clusters.
     #[inline]
-    fn measure(&self, atom: &Atom<'a>) -> (usize, f32) {
+    fn measure(&mut self, atom: &Atom<'a>) -> (usize, f32) {
         let glyph_count: usize = atom
             .shaped_clusters()
             .iter()

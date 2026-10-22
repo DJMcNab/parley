@@ -4,8 +4,9 @@
 use crate::FontData;
 use crate::layout::cluster::Cluster;
 use crate::layout::data::{LineItemData, RunData};
+use crate::layout::justification::Justification;
 use crate::layout::layout::Layout;
-use crate::layout::spacing::{EffectiveSpacing, Gaps, Justification};
+use crate::layout::spacing::{EffectiveSpacing, EffectiveSpacingCursor, Gaps};
 use crate::style::Brush;
 
 use core::ops::Range;
@@ -126,9 +127,10 @@ impl<'a, B: Brush> Run<'a, B> {
     }
 
     #[inline]
-    pub(crate) fn line_spacing(&self) -> EffectiveSpacing {
+    pub(crate) fn line_spacing(&self) -> EffectiveSpacing<'a> {
         let justification = if self.line_data.is_some() {
-            self.layout.data.lines[self.line_index as usize].justification
+            let line = &self.layout.data.lines[self.line_index as usize];
+            self.layout.data.justification.line(line)
         } else {
             Justification::NONE
         };
@@ -268,7 +270,7 @@ pub(crate) struct Glyphs<'a> {
     slice: ShapedSlice<'a>,
     is_rtl: bool,
     /// The spacing to apply, if any. Without spacing, atoms are not tracked.
-    spacing: Option<EffectiveSpacing>,
+    spacing: Option<EffectiveSpacingCursor<'a>>,
     /// The shaped clusters not yet visited: all of `slice`'s clusters without spacing, otherwise
     /// those of the current atom. Visited in logical order for LTR text and in reverse for RTL.
     shaped_clusters: Range<u32>,
@@ -284,12 +286,12 @@ pub(crate) struct Glyphs<'a> {
 }
 
 impl<'a> Glyphs<'a> {
-    fn new(slice: ShapedSlice<'a>, is_rtl: bool, spacing: EffectiveSpacing) -> Self {
+    fn new(slice: ShapedSlice<'a>, is_rtl: bool, spacing: EffectiveSpacing<'a>) -> Self {
         let clusters = slice.shaped_clusters_range();
         Self {
             slice,
             is_rtl,
-            spacing: (!spacing.is_zero()).then_some(spacing),
+            spacing: (!spacing.is_zero()).then_some(spacing.cursor(is_rtl)),
             shaped_clusters: if spacing.is_zero() {
                 clusters
             } else {
@@ -341,7 +343,7 @@ impl Iterator for Glyphs<'_> {
 
             // Without spacing, that was the last cluster. With spacing, it was the last cluster of
             // the current atom; move on to the next atom.
-            let spacing = self.spacing?;
+            let spacing = self.spacing.as_mut()?;
             let atom = if self.is_rtl {
                 self.slice.atoms_from(self.shaped_clusters.start).prev()
             } else {

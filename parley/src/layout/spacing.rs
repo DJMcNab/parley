@@ -5,6 +5,8 @@
 
 use parley_engine::{Atom, Grapheme, ShapedSlice, shape::Whitespace};
 
+use super::justification::{Justification, JustificationCursor};
+
 /// Whether the whitespace is a word separator.
 ///
 /// This mostly follows [CSS Text 3 § 7.1][css-word-separator], in that fixed-width spaces are not
@@ -135,46 +137,49 @@ impl Spacing {
     }
 }
 
-/// Justification to apply to a single line.
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub(crate) struct Justification {
-    /// The amount of additional spacing to apply per justification opportunity.
-    pub(crate) amount_per_opportunity: f32,
-
-    /// One past the line's logically last shaped cluster eligible for justification. Shaped
-    /// clusters at or beyond this index are not justified, as they hang past the line's end, or are
-    /// part of the last atom that doesn't fully hang (e.g., an NBSP doesn't hang, but if it closes
-    /// the line, it shouldn't get justified).
-    pub(crate) justification_end_cluster: u32,
+/// Sequential spacing lookup for atoms visited in one run's visual order.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct EffectiveSpacingCursor<'a> {
+    spacing: Spacing,
+    justification: JustificationCursor<'a>,
 }
 
-impl Justification {
-    /// No justification.
-    pub(crate) const NONE: Self = Self {
-        amount_per_opportunity: 0.,
-        justification_end_cluster: u32::MAX,
-    };
-}
-
-impl Default for Justification {
-    fn default() -> Self {
-        Self::NONE
+impl EffectiveSpacingCursor<'_> {
+    pub(crate) fn is_zero(&self) -> bool {
+        self.spacing.is_zero() && self.justification.is_zero()
+    }
+    pub(crate) fn gaps(&mut self, atom: &Atom<'_>) -> Gaps {
+        let first = atom.characters()[0];
+        let mut gaps = self
+            .spacing
+            .gaps(first.whitespace, first.flags.is_default_ignorable());
+        let justification = self.justification.gaps(atom);
+        gaps.before += justification.before;
+        gaps.after += justification.after;
+        gaps
     }
 }
 
 /// Additional spacing to apply, including justification (if any).
 #[derive(Copy, Clone, Debug)]
-pub(crate) struct EffectiveSpacing {
+pub(crate) struct EffectiveSpacing<'a> {
     spacing: Spacing,
-    justification: Justification,
+    justification: Justification<'a>,
 }
 
-impl EffectiveSpacing {
+impl<'a> EffectiveSpacing<'a> {
+    pub(crate) fn cursor(self, is_rtl: bool) -> EffectiveSpacingCursor<'a> {
+        EffectiveSpacingCursor {
+            spacing: self.spacing,
+            justification: self.justification.cursor(is_rtl),
+        }
+    }
+
     /// The combined [`Spacing`] and [`Justification`] effective for a run.
     ///
     /// To measure text for purposes like line breaking, pass [`Justification::NONE`].
     #[inline(always)]
-    pub(crate) const fn new(spacing: Spacing, justification: Justification) -> Self {
+    pub(crate) const fn new(spacing: Spacing, justification: Justification<'a>) -> Self {
         Self {
             spacing,
             justification,
@@ -182,8 +187,8 @@ impl EffectiveSpacing {
     }
 
     #[inline(always)]
-    pub(crate) const fn is_zero(self) -> bool {
-        self.spacing.is_zero() && self.justification.amount_per_opportunity == 0.
+    pub(crate) fn is_zero(self) -> bool {
+        self.spacing.is_zero() && self.justification.is_zero()
     }
 
     /// The gaps around `atom`.
@@ -195,12 +200,9 @@ impl EffectiveSpacing {
             .spacing
             .gaps(whitespace, first_character.flags.is_default_ignorable());
 
-        if is_word_separator(whitespace)
-            && atom.shaped_clusters_range().end <= self.justification.justification_end_cluster
-        {
-            gaps.after += self.justification.amount_per_opportunity;
-        }
-
+        let justification = self.justification.gaps(atom);
+        gaps.before += justification.before;
+        gaps.after += justification.after;
         gaps
     }
 
@@ -240,9 +242,10 @@ impl EffectiveSpacing {
                 .map(|cluster| cluster.advance)
                 .sum()
         } else {
+            let mut cursor = self.cursor(false);
             slice
                 .atoms_start()
-                .map(|atom| self.atom_advance(&atom))
+                .map(|atom| atom.advance() + cursor.gaps(&atom).total())
                 .sum()
         }
     }
