@@ -75,17 +75,15 @@ impl FontMetrics {
     ///
     /// Returns `None` if the font data cannot be parsed.
     pub fn from_font_instance(
-        font: &FontInstance,
+        font: &crate::FontInstanceRef<'_>,
         font_size: f32,
         variations: &[parlance::FontVariation],
     ) -> Option<Self> {
-        let font_ref =
-            skrifa::FontRef::from_index(font.font.data.as_ref(), font.font.index).ok()?;
+        let font_ref = skrifa::FontRef::from_index(font.data.as_ref(), font.index).ok()?;
         let location = font_ref.axes().location(
-            font.synthesis
-                .variation_settings()
+            font.variations
                 .iter()
-                .map(|(tag, value)| (skrifa::Tag::new(&tag.to_be_bytes()), *value))
+                .map(|v| (skrifa::Tag::new(&v.tag.to_bytes()), v.value))
                 .chain(
                     variations
                         .iter()
@@ -643,7 +641,7 @@ fn process_shaped_clusters<'a>(
 mod tests {
     use alloc::{sync::Arc, vec, vec::Vec};
 
-    use fontique::Synthesis;
+    use crate::SyntheticStyle;
     use linebender_resource_handle::{Blob, FontData};
 
     use crate::{
@@ -733,7 +731,8 @@ mod tests {
     fn font_instance(font_data: &'static [u8]) -> FontInstance {
         FontInstance {
             font: FontData::new(Blob::new(Arc::new(font_data)), 0),
-            synthesis: Synthesis::default(),
+            variations: Default::default(),
+            synthetic_style: SyntheticStyle::default(),
         }
     }
 

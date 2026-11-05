@@ -102,11 +102,13 @@ impl Editor {
         let mut editor = PlainEditor::new(32.0);
         editor.set_text(text);
         editor.set_scale(1.0);
+        let mut font_cx = FontContext::default();
+        let font_selection = font_cx.register_request(GenericFamily::SystemUi, Default::default());
         let styles = editor.edit_styles();
-        styles.insert(GenericFamily::SystemUi.into());
+        styles.insert(font_selection.into());
         styles.insert(StyleProperty::Brush(ColorBrush(palette::css::WHITE)));
         Self {
-            font_cx: FontContext::default(),
+            font_cx,
             layout_cx: LayoutContext::default(),
             editor,
             access: PlainEditorAccessibility::default(),
@@ -117,8 +119,9 @@ impl Editor {
         }
     }
 
-    fn driver(&mut self) -> PlainEditorDriver<'_, ColorBrush> {
-        self.editor.driver(&mut self.font_cx, &mut self.layout_cx)
+    fn driver(&mut self) -> PlainEditorDriver<'_, ColorBrush, parley::FontiqueSession<'_>> {
+        self.editor
+            .driver(self.font_cx.session(), &mut self.layout_cx)
     }
 
     pub fn editor(&mut self) -> &mut PlainEditor<ColorBrush> {
@@ -168,7 +171,9 @@ impl Editor {
                 ..
             } if !self.editor.is_composing() && state.is_down() => {
                 self.cursor_reset();
-                let mut drv = self.editor.driver(&mut self.font_cx, &mut self.layout_cx);
+                let mut drv = self
+                    .editor
+                    .driver(self.font_cx.session(), &mut self.layout_cx);
                 let action_mod = if cfg!(target_os = "macos") {
                     modifiers.meta()
                 } else {
@@ -263,9 +268,6 @@ impl Editor {
                         }
                     }
                     Key::Named(NamedKey::End) => {
-                        let this = &mut *self;
-                        let mut drv = this.driver();
-
                         if action_mod {
                             if shift {
                                 drv.select_to_text_end();
@@ -317,7 +319,9 @@ impl Editor {
                 if pressed(pointer, state) && !self.editor.is_composing() =>
             {
                 self.cursor_reset();
-                let mut drv = self.editor.driver(&mut self.font_cx, &mut self.layout_cx);
+                let mut drv = self
+                    .editor
+                    .driver(self.font_cx.session(), &mut self.layout_cx);
                 let cursor_pos = (
                     state.position.x as f32 - INSET,
                     state.position.y as f32 - INSET,
@@ -373,7 +377,9 @@ impl Editor {
     }
 
     pub fn handle_accesskit_action_request(&mut self, req: &accesskit::ActionRequest) {
-        let mut drv = self.editor.driver(&mut self.font_cx, &mut self.layout_cx);
+        let mut drv = self
+            .editor
+            .driver(self.font_cx.session(), &mut self.layout_cx);
         self.access.handle_action_request(&mut drv, req);
     }
 
@@ -399,7 +405,9 @@ impl Editor {
             renderer.set_paint(palette::css::WHITE);
             renderer.fill_rect(&convert_rect(&cursor));
         }
-        let layout = self.editor.layout(&mut self.font_cx, &mut self.layout_cx);
+        let layout = self
+            .editor
+            .layout(&mut self.font_cx.session(), &mut self.layout_cx);
         for line in layout.lines() {
             for item in line.items() {
                 let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
@@ -436,9 +444,9 @@ impl Editor {
                 let run = glyph_run.run();
                 let font = run.font();
                 let font_size = run.font_size();
-                let synthesis = run.synthesis();
+                let synthesis = run.synthetic_style();
                 let glyph_xform = synthesis
-                    .skew()
+                    .skew_degrees
                     .map(|angle| Affine::skew(angle.to_radians().tan() as f64, 0.0));
                 set_brush(renderer, &style.brush);
                 let normalized_coords = bytemuck::cast_slice::<_, i16>(run.normalized_coords());
@@ -485,7 +493,9 @@ impl Editor {
     }
 
     pub fn accessibility(&mut self, update: &mut TreeUpdate, node: &mut Node) {
-        let mut drv = self.editor.driver(&mut self.font_cx, &mut self.layout_cx);
+        let mut drv = self
+            .editor
+            .driver(self.font_cx.session(), &mut self.layout_cx);
         self.access.build_nodes(
             &mut drv,
             update,

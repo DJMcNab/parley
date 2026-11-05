@@ -6,17 +6,37 @@ use crate::{
     WhiteSpaceCollapse, WordBreak,
 };
 use alloc::{vec, vec::Vec};
-use fontique::FontWeight;
 use icu_properties::props::Script;
 use icu_segmenter::{LineSegmenter, options::LineBreakOptions};
 
 /// Whether we have complex script dictionaries compiled-in, which ICU4X then uses for segmentation.
 const HAS_DICTIONARIES: bool = cfg!(feature = "complex-scripts");
 
-#[derive(Default)]
 struct TestContext {
     pub layout_context: LayoutContext,
     pub font_context: FontContext,
+}
+
+impl Default for TestContext {
+    fn default() -> Self {
+        let mut font_context = FontContext::new();
+        assert_eq!(
+            font_context
+                .register_request(
+                    crate::GenericFamily::SansSerif,
+                    fontique::Attributes {
+                        weight: crate::FontWeight::BOLD,
+                        ..Default::default()
+                    }
+                )
+                .0,
+            1
+        );
+        Self {
+            layout_context: LayoutContext::new(),
+            font_context,
+        }
+    }
 }
 
 impl TestContext {
@@ -132,13 +152,13 @@ impl TestContext {
 
 fn verify_analysis(
     text: &str,
-    configure_builder: impl for<'a> FnOnce(&mut RangedBuilder<'a, [u8; 4]>),
+    configure_builder: impl for<'a> FnOnce(&mut RangedBuilder<'a, [u8; 4], crate::FontiqueSession<'a>>),
 ) -> TestContext {
     let mut test_context = TestContext::default();
 
     {
         let mut builder = test_context.layout_context.ranged_builder(
-            &mut test_context.font_context,
+            test_context.font_context.session(),
             text,
             1.,
             true,
@@ -161,7 +181,7 @@ fn verify_analysis_with_override(
 
     {
         let mut builder = test_context.layout_context.ranged_builder(
-            &mut test_context.font_context,
+            test_context.font_context.session(),
             text,
             1.,
             true,
@@ -515,8 +535,8 @@ fn test_mixed_break_frequent_alternation() {
 #[test]
 fn test_mixed_style() {
     verify_analysis("A  B  C D", |builder| {
-        builder.push(StyleProperty::FontWeight(FontWeight::new(400.0)), 0..3);
-        builder.push(StyleProperty::FontWeight(FontWeight::new(700.0)), 3..9);
+        builder.push(StyleProperty::FontSelection(crate::FontRequestId(0)), 0..3);
+        builder.push(StyleProperty::FontSelection(crate::FontRequestId(1)), 3..9);
     })
     .expect_soft_wrap_opportunity_list(vec![
         false, false, false, true, false, false, true, false, true,
@@ -1219,7 +1239,7 @@ fn test_line_break_override_applies_under_anywhere() {
     {
         let text = "a b/c";
         let mut builder = test_context.layout_context.ranged_builder(
-            &mut test_context.font_context,
+            test_context.font_context.session(),
             text,
             1.,
             true,

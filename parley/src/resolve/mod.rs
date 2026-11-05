@@ -11,18 +11,15 @@ pub(crate) use range::RangedStyleBuilder;
 use alloc::{vec, vec::Vec};
 
 use super::style::{
-    Brush, FontFamily, FontFamilyName, FontFeature, FontFeatures, FontStyle, FontVariation,
-    FontVariations, FontWeight, FontWidth, StyleProperty,
+    Brush, FontFeature, FontFeatures, FontVariation, FontVariations, StyleProperty,
 };
-use crate::font::FontContext;
+use crate::FontRequestId;
 use crate::style::TextStyle;
 use crate::util::nearly_eq;
 use crate::{CollapsedSpace, TextWrapMode, WhiteSpaceCollapse, WordBreak};
 use crate::{LineBreak, LineHeight, OverflowWrap, VerticalAlign, layout};
-use core::borrow::Borrow;
 use core::ops::Range;
-use fontique::FamilyId;
-use fontique::Language;
+use parlance::Language;
 
 /// Style with an associated range.
 #[derive(Debug, Clone)]
@@ -57,12 +54,6 @@ impl<T> Default for Resolved<T> {
             index: !0,
             _phantom: core::marker::PhantomData,
         }
-    }
-}
-
-impl<T> Resolved<T> {
-    pub(crate) fn id(&self) -> usize {
-        self.index
     }
 }
 
@@ -124,10 +115,8 @@ impl<T: Clone + PartialEq> Cache<T> {
 /// Context for managing dynamic properties during layout.
 #[derive(Clone, Default)]
 pub(crate) struct ResolveContext {
-    families: Cache<FamilyId>,
     variations: Cache<FontVariation>,
     features: Cache<FontFeature>,
-    tmp_families: Vec<FamilyId>,
     tmp_variations: Vec<FontVariation>,
     tmp_features: Vec<FontFeature>,
 }
@@ -135,17 +124,13 @@ pub(crate) struct ResolveContext {
 impl ResolveContext {
     pub(crate) fn resolve_property<B: Brush>(
         &mut self,
-        fcx: &mut FontContext,
         property: &StyleProperty<'_, B>,
         scale: f32,
     ) -> ResolvedProperty<B> {
         use ResolvedProperty::*;
         match property {
-            StyleProperty::FontFamily(value) => FontFamily(self.resolve_font_family(fcx, value)),
+            StyleProperty::FontSelection(value) => FontSelection(*value),
             StyleProperty::FontSize(value) => FontSize(*value * scale),
-            StyleProperty::FontWidth(value) => FontWidth(*value),
-            StyleProperty::FontStyle(value) => FontStyle(*value),
-            StyleProperty::FontWeight(value) => FontWeight(*value),
             StyleProperty::FontVariations(value) => FontVariations(self.resolve_variations(value)),
             StyleProperty::FontFeatures(value) => FontFeatures(self.resolve_features(value)),
             StyleProperty::Locale(value) => Locale(*value),
@@ -175,17 +160,13 @@ impl ResolveContext {
 
     pub(crate) fn resolve_entire_style_set<B: Brush>(
         &mut self,
-        fcx: &mut FontContext,
-        raw_style: &TextStyle<'_, '_, B>,
+        raw_style: &TextStyle<'_, B>,
         scale: f32,
     ) -> ResolvedStyle<B> {
         ResolvedStyle {
             parent: 0,
-            font_family: self.resolve_font_family(fcx, &raw_style.font_family),
+            font_selection: raw_style.font_selection,
             font_size: raw_style.font_size * scale,
-            font_width: raw_style.font_width,
-            font_style: raw_style.font_style,
-            font_weight: raw_style.font_weight,
             font_variations: self.resolve_variations(&raw_style.font_variations),
             font_features: self.resolve_features(&raw_style.font_features),
             locale: raw_style.locale,
@@ -213,62 +194,6 @@ impl ResolveContext {
             white_space_collapse: raw_style.white_space_collapse,
             collapsed_space: raw_style.collapsed_space,
         }
-    }
-
-    /// Resolves a `font-family` value.
-    pub(crate) fn resolve_font_family(
-        &mut self,
-        fcx: &mut FontContext,
-        value: &FontFamily<'_>,
-    ) -> Resolved<FamilyId> {
-        self.tmp_families.clear();
-        match value {
-            FontFamily::Source(source) => {
-                for family in FontFamilyName::parse_css_list(source).map_while(Result::ok) {
-                    match family {
-                        FontFamilyName::Named(name) => {
-                            if let Some(family) = fcx.collection.family_by_name(&name) {
-                                self.tmp_families.push(family.id());
-                            }
-                        }
-                        FontFamilyName::Generic(family) => {
-                            self.tmp_families
-                                .extend(fcx.collection.generic_families(family));
-                        }
-                    }
-                }
-            }
-            FontFamily::Single(family) => match family {
-                FontFamilyName::Named(name) => {
-                    if let Some(family) = fcx.collection.family_by_name(name) {
-                        self.tmp_families.push(family.id());
-                    }
-                }
-                FontFamilyName::Generic(family) => {
-                    self.tmp_families
-                        .extend(fcx.collection.generic_families(*family));
-                }
-            },
-            FontFamily::List(families) => {
-                let families: &[FontFamilyName<'_>] = families.borrow();
-                for family in families {
-                    match family {
-                        FontFamilyName::Named(name) => {
-                            if let Some(family) = fcx.collection.family_by_name(name) {
-                                self.tmp_families.push(family.id());
-                            }
-                        }
-                        FontFamilyName::Generic(family) => {
-                            self.tmp_families
-                                .extend(fcx.collection.generic_families(*family));
-                        }
-                    }
-                }
-            }
-        }
-        let resolved = self.families.insert(&self.tmp_families);
-        self.tmp_families.clear();
-        resolved
     }
 
     /// Resolves font variation settings.
@@ -321,11 +246,6 @@ impl ResolveContext {
         resolved
     }
 
-    /// Returns the list of font families for the specified handle.
-    pub(crate) fn stack(&self, stack: Resolved<FamilyId>) -> Option<&[FamilyId]> {
-        self.families.get(stack)
-    }
-
     /// Returns the list of font variations for the specified handle.
     pub(crate) fn variations(
         &self,
@@ -341,7 +261,6 @@ impl ResolveContext {
 
     /// Clears the resources in the context.
     pub(crate) fn clear(&mut self) {
-        self.families.clear();
         self.variations.clear();
         self.features.clear();
     }
@@ -350,16 +269,9 @@ impl ResolveContext {
 /// Style property with resolved resources.
 #[derive(Clone, PartialEq)]
 pub(crate) enum ResolvedProperty<B: Brush> {
-    /// `font-family`.
-    FontFamily(Resolved<FamilyId>),
+    FontSelection(FontRequestId),
     /// Font size.
     FontSize(f32),
-    /// Font width.
-    FontWidth(FontWidth),
-    /// Font style.
-    FontStyle(FontStyle),
-    /// Font weight.
-    FontWeight(FontWeight),
     /// Font variation settings.
     FontVariations(Resolved<FontVariation>),
     /// Font feature settings.
@@ -412,16 +324,9 @@ pub(crate) struct ResolvedStyle<B: Brush> {
     /// Index in the style table of the style of the enclosing span (the root style refers to
     /// itself).
     pub(crate) parent: u16,
-    /// `font-family`.
-    pub(crate) font_family: Resolved<FamilyId>,
+    pub(crate) font_selection: FontRequestId,
     /// Font size.
     pub(crate) font_size: f32,
-    /// Font width.
-    pub(crate) font_width: FontWidth,
-    /// Font style.
-    pub(crate) font_style: FontStyle,
-    /// Font weight.
-    pub(crate) font_weight: FontWeight,
     /// Font variation settings.
     pub(crate) font_variations: Resolved<FontVariation>,
     /// Font feature settings.
@@ -461,11 +366,8 @@ impl<B: Brush> ResolvedStyle<B> {
     pub(crate) fn apply(&mut self, property: ResolvedProperty<B>) {
         use ResolvedProperty::*;
         match property {
-            FontFamily(value) => self.font_family = value,
+            FontSelection(value) => self.font_selection = value,
             FontSize(value) => self.font_size = value,
-            FontWidth(value) => self.font_width = value,
-            FontStyle(value) => self.font_style = value,
-            FontWeight(value) => self.font_weight = value,
             FontVariations(value) => self.font_variations = value,
             FontFeatures(value) => self.font_features = value,
             Locale(value) => self.locale = value,
@@ -494,11 +396,8 @@ impl<B: Brush> ResolvedStyle<B> {
     pub(crate) fn check(&self, property: &ResolvedProperty<B>) -> bool {
         use ResolvedProperty::*;
         match property {
-            FontFamily(value) => self.font_family == *value,
+            FontSelection(value) => self.font_selection == *value,
             FontSize(value) => nearly_eq(self.font_size, *value),
-            FontWidth(value) => self.font_width == *value,
-            FontStyle(value) => self.font_style == *value,
-            FontWeight(value) => self.font_weight == *value,
             FontVariations(value) => self.font_variations == *value,
             FontFeatures(value) => self.font_features == *value,
             Locale(value) => self.locale == *value,

@@ -964,7 +964,7 @@ impl Grapheme {
 mod tests {
     use alloc::{sync::Arc, vec};
 
-    use fontique::Synthesis;
+    use crate::SyntheticStyle;
     use linebender_resource_handle::{Blob, FontData};
 
     use crate::{
@@ -1009,7 +1009,8 @@ mod tests {
     fn font_instance(font_data: &'static [u8]) -> FontInstance {
         FontInstance {
             font: FontData::new(Blob::new(Arc::new(font_data)), 0),
-            synthesis: Synthesis::default(),
+            variations: Default::default(),
+            synthetic_style: SyntheticStyle::default(),
         }
     }
 

@@ -139,10 +139,12 @@ fn draw_bitmap_emoji() {
     let text = "\u{2705}\u{1f440}\u{1f389}\u{1f920}";
 
     test_with_configs(&mut env, |env| {
+        let font_request_4 = env.font_request(
+            FontFamily::named("Noto Color Emoji CBTF"),
+            Default::default(),
+        );
         let mut builder = env.ranged_builder(text);
-        builder.push_default(StyleProperty::FontFamily(FontFamily::named(
-            "Noto Color Emoji CBTF",
-        )));
+        builder.push_default(StyleProperty::FontSelection(font_request_4));
         builder.push_default(StyleProperty::FontSize(24.0));
         let mut layout = builder.build(text);
         layout.break_all_lines(None);
@@ -157,10 +159,10 @@ fn draw_colr_emoji() {
     let text = "\u{2705}\u{1f440}\u{1f389}\u{1f920}";
 
     test_with_configs(&mut env, |env| {
+        let font_request_3 =
+            env.font_request(FontFamily::named("Noto Color Emoji"), Default::default());
         let mut builder = env.ranged_builder(text);
-        builder.push_default(StyleProperty::FontFamily(FontFamily::named(
-            "Noto Color Emoji",
-        )));
+        builder.push_default(StyleProperty::FontSelection(font_request_3));
         builder.push_default(StyleProperty::FontSize(24.0));
         let mut layout = builder.build(text);
         layout.break_all_lines(None);
@@ -184,16 +186,14 @@ fn draw_colr_emoji_with_presentation_style() {
     let text = "\u{270c}\u{fe0f}\u{2705}\u{270c}\u{fe0f}";
 
     test_with_configs(&mut env, |env| {
+        let font_request_1 = env.font_request(parley::GenericFamily::Emoji, Default::default());
+        let font_request_2 =
+            env.font_request(FontFamily::named("Noto Color Emoji"), Default::default());
         let mut builder = env.ranged_builder(text);
         builder.push_default(StyleProperty::FontSize(24.0));
         // Following <fontique/src/backend/coretext.rs#L33>
-        builder.push_default(StyleProperty::FontFamily(
-            parley::GenericFamily::Emoji.into(),
-        ));
-        builder.push(
-            StyleProperty::FontFamily(FontFamily::named("Noto Color Emoji")),
-            0..9,
-        );
+        builder.push_default(StyleProperty::FontSelection(font_request_1));
+        builder.push(StyleProperty::FontSelection(font_request_2), 0..9);
 
         let mut layout = builder.build(text);
         layout.break_all_lines(None);
@@ -218,12 +218,11 @@ fn draw_colr_emoji_with_presentation_style_without_setting_default_font() {
     let text = "\u{270c}\u{fe0f}\u{2705}\u{270c}\u{fe0f}";
 
     test_with_configs(&mut env, |env| {
+        let font_request_0 =
+            env.font_request(FontFamily::named("Noto Color Emoji"), Default::default());
         let mut builder = env.ranged_builder(text);
         builder.push_default(StyleProperty::FontSize(24.0));
-        builder.push(
-            StyleProperty::FontFamily(FontFamily::named("Noto Color Emoji")),
-            0..9,
-        );
+        builder.push(StyleProperty::FontSelection(font_request_0), 0..9);
 
         let mut layout = builder.build(text);
         layout.break_all_lines(None);

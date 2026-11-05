@@ -50,7 +50,7 @@ impl CursorTest {
         lcx: &mut LayoutContext<ColorBrush>,
         fcx: &mut FontContext,
     ) -> Self {
-        let builder = lcx.ranged_builder(fcx, text, 1.0, true);
+        let builder = lcx.ranged_builder(fcx.session(), text, 1.0, true);
         let mut layout = builder.build(text);
         layout.break_all_lines(None);
 

@@ -19,10 +19,8 @@ use parley_engine::{ShapedRun, ShapedSlice, ShapedText};
 /// `HarfRust`-based run data
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RunData {
-    /// Font attributes, needed for accessibility.
-    pub(crate) font_attrs: fontique::Attributes,
-    /// Synthesis for rendering (contains variation settings)
-    pub(crate) synthesis: fontique::Synthesis,
+    pub(crate) font_selection: crate::FontRequestId,
+    pub(crate) synthetic_style: crate::SyntheticStyle,
     /// The line height
     pub line_height: f32,
     /// Additional spacing inserted between this run's atoms.
@@ -386,12 +384,8 @@ impl<B: Brush> LayoutData<B> {
 
         let font = &self.shaped_text.fonts()[shaped_run.font_index];
         let run = RunData {
-            font_attrs: fontique::Attributes {
-                width: run_style.font_width,
-                weight: run_style.font_weight,
-                style: run_style.font_style,
-            },
-            synthesis: font.synthesis,
+            font_selection: run_style.font_selection,
+            synthetic_style: font.synthetic_style,
             line_height,
             spacing,
             run_box,

@@ -3,7 +3,7 @@
 
 //! Context for layout.
 
-use super::FontContext;
+use super::FontSource;
 use super::context::LayoutContext;
 use super::style::{Brush, StyleProperty, TextStyle};
 
@@ -45,18 +45,18 @@ impl BuilderOptions<'_> {
 ///
 /// This builder does not collapse whitespace. For whitespace collapsing, use the [`TreeBuilder`]
 #[must_use]
-pub struct RangedBuilder<'a, B: Brush> {
+pub struct RangedBuilder<'a, B: Brush, F: FontSource> {
     pub(crate) options: BuilderOptions<'a>,
     pub(crate) lcx: &'a mut LayoutContext<B>,
-    pub(crate) fcx: &'a mut FontContext,
+    pub(crate) fcx: F,
 }
 
-impl<'b, B: Brush> RangedBuilder<'b, B> {
+impl<'b, B: Brush, F: FontSource> RangedBuilder<'b, B, F> {
     pub fn push_default<'a>(&mut self, property: impl Into<StyleProperty<'a, B>>) {
-        let resolved =
-            self.lcx
-                .rcx
-                .resolve_property(self.fcx, &property.into(), self.options.scale);
+        let resolved = self
+            .lcx
+            .rcx
+            .resolve_property(&property.into(), self.options.scale);
         self.lcx.ranged_style_builder.push_default(resolved);
     }
 
@@ -65,10 +65,10 @@ impl<'b, B: Brush> RangedBuilder<'b, B> {
         property: impl Into<StyleProperty<'a, B>>,
         range: impl RangeBounds<usize>,
     ) {
-        let resolved =
-            self.lcx
-                .rcx
-                .resolve_property(self.fcx, &property.into(), self.options.scale);
+        let resolved = self
+            .lcx
+            .rcx
+            .resolve_property(&property.into(), self.options.scale);
         self.lcx.ranged_style_builder.push(resolved, range);
     }
 
@@ -114,14 +114,14 @@ impl<'b, B: Brush> RangedBuilder<'b, B> {
         self.options.dictionary_provider = provider;
     }
 
-    pub fn build_into(self, layout: &mut Layout<B>, text: impl AsRef<str>) {
+    pub fn build_into(mut self, layout: &mut Layout<B>, text: impl AsRef<str>) {
         // Apply RangedStyleBuilder styles directly to style-table/style-run state.
         self.lcx
             .ranged_style_builder
             .finish(&mut self.lcx.style_table, &mut self.lcx.style_runs);
 
         // Call generic layout builder method
-        build_into_layout(layout, text.as_ref(), self.lcx, self.fcx, self.options);
+        build_into_layout(layout, text.as_ref(), self.lcx, &mut self.fcx, self.options);
     }
 
     pub fn build(self, text: impl AsRef<str>) -> Layout<B> {
@@ -136,15 +136,15 @@ impl<'b, B: Brush> RangedBuilder<'b, B> {
 ///
 /// This builder does not collapse whitespace. For whitespace collapsing, use the [`TreeBuilder`]
 #[must_use]
-pub struct StyleRunBuilder<'a, B: Brush> {
+pub struct StyleRunBuilder<'a, B: Brush, F: FontSource> {
     pub(crate) options: BuilderOptions<'a>,
     pub(crate) len: usize,
     pub(crate) lcx: &'a mut LayoutContext<B>,
-    pub(crate) fcx: &'a mut FontContext,
+    pub(crate) fcx: F,
     pub(crate) cursor: usize,
 }
 
-impl<'b, B: Brush> StyleRunBuilder<'b, B> {
+impl<'b, B: Brush, F: FontSource> StyleRunBuilder<'b, B, F> {
     /// Reserves additional capacity for styles and runs.
     ///
     /// This is an optional optimization for callers that know counts
@@ -157,14 +157,11 @@ impl<'b, B: Brush> StyleRunBuilder<'b, B> {
 
     /// Adds a fully-specified style to the shared style table and
     /// returns its index.
-    pub fn push_style<'family, 'settings>(
-        &mut self,
-        style: TextStyle<'family, 'settings, B>,
-    ) -> u16 {
+    pub fn push_style<'settings>(&mut self, style: TextStyle<'settings, B>) -> u16 {
         let resolved = self
             .lcx
             .rcx
-            .resolve_entire_style_set(self.fcx, &style, self.options.scale);
+            .resolve_entire_style_set(&style, self.options.scale);
         let style_index = self.lcx.style_table.len();
         assert!(style_index <= u16::MAX as usize, "too many styles");
         self.lcx.style_table.push(resolved);
@@ -238,7 +235,7 @@ impl<'b, B: Brush> StyleRunBuilder<'b, B> {
         self.options.dictionary_provider = provider;
     }
 
-    pub fn build_into(self, layout: &mut Layout<B>, text: impl AsRef<str>) {
+    pub fn build_into(mut self, layout: &mut Layout<B>, text: impl AsRef<str>) {
         assert!(
             self.cursor == self.len,
             "StyleRunBuilder requires runs that cover the full text"
@@ -247,11 +244,10 @@ impl<'b, B: Brush> StyleRunBuilder<'b, B> {
             // This is reachable for empty text. In this case, the layout still needs a style and an
             // empty style run, e.g. to size a cursor.
             if self.lcx.style_table.is_empty() {
-                let style = self.lcx.rcx.resolve_entire_style_set(
-                    self.fcx,
-                    &TextStyle::default(),
-                    self.options.scale,
-                );
+                let style = self
+                    .lcx
+                    .rcx
+                    .resolve_entire_style_set(&TextStyle::default(), self.options.scale);
                 self.lcx.style_table.push(style);
             }
             self.lcx.style_runs.push(StyleRun {
@@ -259,7 +255,7 @@ impl<'b, B: Brush> StyleRunBuilder<'b, B> {
                 range: 0..0,
             });
         }
-        build_into_layout(layout, text.as_ref(), self.lcx, self.fcx, self.options);
+        build_into_layout(layout, text.as_ref(), self.lcx, &mut self.fcx, self.options);
     }
 
     pub fn build(self, text: impl AsRef<str>) -> Layout<B> {
@@ -271,18 +267,18 @@ impl<'b, B: Brush> StyleRunBuilder<'b, B> {
 
 /// Builder for constructing a text layout with a tree of attributes.
 #[must_use]
-pub struct TreeBuilder<'a, B: Brush> {
+pub struct TreeBuilder<'a, B: Brush, F: FontSource> {
     pub(crate) options: BuilderOptions<'a>,
     pub(crate) lcx: &'a mut LayoutContext<B>,
-    pub(crate) fcx: &'a mut FontContext,
+    pub(crate) fcx: F,
 }
 
-impl<'b, B: Brush> TreeBuilder<'b, B> {
-    pub fn push_style_span(&mut self, style: TextStyle<'_, '_, B>) {
+impl<'b, B: Brush, F: FontSource> TreeBuilder<'b, B, F> {
+    pub fn push_style_span(&mut self, style: TextStyle<'_, B>) {
         let resolved = self
             .lcx
             .rcx
-            .resolve_entire_style_set(self.fcx, &style, self.options.scale);
+            .resolve_entire_style_set(&style, self.options.scale);
         self.lcx.tree_style_builder.push_style_span(resolved);
     }
 
@@ -293,13 +289,11 @@ impl<'b, B: Brush> TreeBuilder<'b, B> {
         's: 'iter,
         B: 'iter,
     {
-        self.lcx
-            .tree_style_builder
-            .push_style_modification_span(properties.into_iter().map(|p| {
-                self.lcx
-                    .rcx
-                    .resolve_property(self.fcx, p, self.options.scale)
-            }));
+        self.lcx.tree_style_builder.push_style_modification_span(
+            properties
+                .into_iter()
+                .map(|p| self.lcx.rcx.resolve_property(p, self.options.scale)),
+        );
     }
 
     pub fn pop_style_span(&mut self) {
@@ -378,7 +372,7 @@ impl<'b, B: Brush> TreeBuilder<'b, B> {
     }
 
     #[inline]
-    pub fn build_into(self, layout: &mut Layout<B>) -> String {
+    pub fn build_into(mut self, layout: &mut Layout<B>) -> String {
         // Apply TreeStyleBuilder styles to LayoutContext.
         let text = self
             .lcx
@@ -386,7 +380,7 @@ impl<'b, B: Brush> TreeBuilder<'b, B> {
             .finish(&mut self.lcx.style_table, &mut self.lcx.style_runs);
 
         // Call generic layout builder method
-        build_into_layout(layout, &text, self.lcx, self.fcx, self.options);
+        build_into_layout(layout, &text, self.lcx, &mut self.fcx, self.options);
 
         text
     }
@@ -403,7 +397,7 @@ fn build_into_layout<B: Brush>(
     layout: &mut Layout<B>,
     text: &str,
     lcx: &mut LayoutContext<B>,
-    fcx: &mut FontContext,
+    fcx: &mut impl FontSource,
     options: BuilderOptions<'_>,
 ) {
     if text.is_empty() && lcx.style_runs.is_empty() {
@@ -502,6 +496,7 @@ fn build_into_layout<B: Brush>(
             &lcx.analysis,
             &lcx.char_style_indices,
             &mut lcx.scx,
+            &mut lcx.font_coverage,
             text,
             layout,
             &mut lcx.style_features,

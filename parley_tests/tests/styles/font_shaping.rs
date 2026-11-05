@@ -28,8 +28,9 @@ fn style_variations_weight_axis() {
             value: weight,
         }]));
 
+        let font_request_2 = env.font_request(FontFamily::named("Arimo"), Default::default());
         let mut builder = env.ranged_builder(text);
-        builder.push_default(StyleProperty::FontFamily(FontFamily::named("Arimo")));
+        builder.push_default(StyleProperty::FontSelection(font_request_2));
         builder.push_default(StyleProperty::FontVariations(variations));
         let mut layout = builder.build(text);
         layout.break_all_lines(None);
@@ -53,8 +54,9 @@ fn style_variations_width_axis() {
             value: width,
         }]));
 
+        let font_request_1 = env.font_request(FontFamily::named("Roboto Flex"), Default::default());
         let mut builder = env.ranged_builder(text);
-        builder.push_default(StyleProperty::FontFamily(FontFamily::named("Roboto Flex")));
+        builder.push_default(StyleProperty::FontSelection(font_request_1));
         builder.push_default(StyleProperty::FontVariations(variations));
         let mut layout = builder.build(text);
         layout.break_all_lines(None);
@@ -83,8 +85,9 @@ fn style_variations_multiple_axes() {
         },
     ]));
 
+    let font_request_0 = env.font_request(FontFamily::named("Roboto Flex"), Default::default());
     let mut builder = env.ranged_builder(text);
-    builder.push_default(StyleProperty::FontFamily(FontFamily::named("Roboto Flex")));
+    builder.push_default(StyleProperty::FontSelection(font_request_0));
     builder.push_default(StyleProperty::FontVariations(variations));
     let mut layout = builder.build(text);
     layout.break_all_lines(None);

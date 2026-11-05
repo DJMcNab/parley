@@ -56,10 +56,38 @@ pub(crate) fn create_font_context() -> FontContext {
                 .unwrap_or_else(|| panic!("{font_name} font not found"));
         }
     }
-    FontContext {
-        collection,
-        source_cache: SourceCache::default(),
-    }
+    let mut context = FontContext::from_parts(collection, SourceCache::default());
+    assert_eq!(
+        context
+            .register_request(FONT_FAMILY_LIST, Default::default())
+            .0,
+        1
+    );
+    assert_eq!(
+        context
+            .register_request(
+                FONT_FAMILY_LIST,
+                parley::fontique::Attributes {
+                    style: parley::FontStyle::Italic,
+                    ..Default::default()
+                }
+            )
+            .0,
+        2
+    );
+    assert_eq!(
+        context
+            .register_request(
+                FONT_FAMILY_LIST,
+                parley::fontique::Attributes {
+                    weight: parley::FontWeight::BOLD,
+                    ..Default::default()
+                }
+            )
+            .0,
+        3
+    );
+    context
 }
 
 pub(crate) const FONT_FAMILY_LIST: &[FontFamilyName<'_>] = &[

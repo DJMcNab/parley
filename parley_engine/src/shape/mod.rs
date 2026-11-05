@@ -5,7 +5,10 @@
 
 pub(crate) mod atom;
 mod cache;
+mod charmap;
 mod cluster;
+mod coverage;
+pub use coverage::FontCoverageCache;
 mod data;
 pub(crate) mod shaped_text;
 pub(crate) mod shaper;

@@ -18,6 +18,7 @@ fn editor_simple_move() {
     drv.move_right();
     drv.move_right();
     drv.move_right();
+    drop(drv);
 
     env.check_editor_snapshot(&mut editor);
     env.driver(&mut editor).move_down();

@@ -5,19 +5,13 @@
 
 use std::{vec, vec::Vec};
 
-use fontique::{FontStyle, FontWeight, FontWidth};
 use peniko::color::palette;
 
-use super::utils::{
-    ColorBrush,
-    asserts::assert_eq_layout_data,
-    fonts::{FONT_FAMILY_LIST, create_font_context},
-};
+use super::utils::{ColorBrush, asserts::assert_eq_layout_data, fonts::create_font_context};
 use crate::{
-    BaseDirection, BreakReason, FontContext, FontFamily, FontFeatures, FontVariations, Layout,
-    LayoutContext, LineBreak, LineHeight, OverflowWrap, RangedBuilder, StyleProperty,
-    StyleRunBuilder, TextStyle, TextWrapMode, TreeBuilder, VerticalAlign, WhiteSpaceCollapse,
-    WordBreak,
+    BaseDirection, BreakReason, FontContext, FontFeatures, FontVariations, Layout, LayoutContext,
+    LineBreak, LineHeight, OverflowWrap, RangedBuilder, StyleProperty, StyleRunBuilder, TextStyle,
+    TextWrapMode, TreeBuilder, VerticalAlign, WhiteSpaceCollapse, WordBreak,
 };
 
 /// Set of options for [`build_layout_with_ranged`].
@@ -33,7 +27,7 @@ struct TreeOptions<'a, 'b> {
     scale: f32,
     quantize: bool,
     max_advance: Option<f32>,
-    root_style: &'a TextStyle<'b, 'b, ColorBrush>,
+    root_style: &'a TextStyle<'b, ColorBrush>,
 }
 
 /// Generates a `Layout` with a ranged builder.
@@ -41,9 +35,9 @@ fn build_layout_with_ranged(
     fcx: &mut FontContext,
     lcx: &mut LayoutContext<ColorBrush>,
     opts: &RangedOptions<'_>,
-    with_builder: impl Fn(&mut RangedBuilder<'_, ColorBrush>),
+    with_builder: impl Fn(&mut RangedBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>),
 ) -> Layout<ColorBrush> {
-    let mut rb = lcx.ranged_builder(fcx, opts.text, opts.scale, opts.quantize);
+    let mut rb = lcx.ranged_builder(fcx.session(), opts.text, opts.scale, opts.quantize);
     with_builder(&mut rb);
     let mut layout = rb.build(opts.text);
     layout.break_all_lines(opts.max_advance);
@@ -55,9 +49,9 @@ fn build_layout_with_tree(
     fcx: &mut FontContext,
     lcx: &mut LayoutContext<ColorBrush>,
     opts: &TreeOptions<'_, '_>,
-    with_builder: impl Fn(&mut TreeBuilder<'_, ColorBrush>),
+    with_builder: impl Fn(&mut TreeBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>),
 ) -> Layout<ColorBrush> {
-    let mut tb = lcx.tree_builder(fcx, opts.scale, opts.quantize, opts.root_style);
+    let mut tb = lcx.tree_builder(fcx.session(), opts.scale, opts.quantize, opts.root_style);
     with_builder(&mut tb);
     let (mut layout, _) = tb.build();
     layout.break_all_lines(opts.max_advance);
@@ -69,9 +63,9 @@ fn build_layout_with_style_runs(
     fcx: &mut FontContext,
     lcx: &mut LayoutContext<ColorBrush>,
     opts: &RangedOptions<'_>,
-    with_builder: impl Fn(&mut StyleRunBuilder<'_, ColorBrush>),
+    with_builder: impl Fn(&mut StyleRunBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>),
 ) -> Layout<ColorBrush> {
-    let mut rb = lcx.style_run_builder(fcx, opts.text, opts.scale, opts.quantize);
+    let mut rb = lcx.style_run_builder(fcx.session(), opts.text, opts.scale, opts.quantize);
     with_builder(&mut rb);
     let mut layout = rb.build(opts.text);
     layout.break_all_lines(opts.max_advance);
@@ -84,8 +78,8 @@ fn builders_apply_base_direction() {
     let mut fcx = create_font_context();
     let mut lcx: LayoutContext<ColorBrush> = LayoutContext::new();
 
-    let mut ranged = lcx.ranged_builder(&mut fcx, text, 1.0, true);
-    ranged.push_default(FontFamily::from(FONT_FAMILY_LIST));
+    let mut ranged = lcx.ranged_builder(fcx.session(), text, 1.0, true);
+    ranged.push_default(crate::FontRequestId(1));
     ranged.set_base_direction(BaseDirection::Rtl);
     let mut ranged_layout = ranged.build(text);
     ranged_layout.break_all_lines(None);
@@ -100,10 +94,10 @@ fn builders_apply_base_direction() {
     );
 
     let root_style = TextStyle {
-        font_family: FontFamily::from(FONT_FAMILY_LIST),
+        font_selection: crate::FontRequestId(1),
         ..TextStyle::default()
     };
-    let mut tree = lcx.tree_builder(&mut fcx, 1.0, true, &root_style);
+    let mut tree = lcx.tree_builder(fcx.session(), 1.0, true, &root_style);
     tree.set_base_direction(BaseDirection::Rtl);
     tree.push_text(text);
     let (mut tree_layout, _) = tree.build();
@@ -115,7 +109,7 @@ fn builders_apply_base_direction() {
         "tree base direction",
     );
 
-    let mut style_runs = lcx.style_run_builder(&mut fcx, text, 1.0, true);
+    let mut style_runs = lcx.style_run_builder(fcx.session(), text, 1.0, true);
     style_runs.set_base_direction(BaseDirection::Rtl);
     let style = style_runs.push_style(root_style);
     style_runs.push_style_run(style, ..);
@@ -149,9 +143,9 @@ fn assert_builders_produce_same_result<'b>(
     scale: f32,
     quantize: bool,
     max_advance: Option<f32>,
-    root_style: &TextStyle<'b, 'b, ColorBrush>,
-    with_ranged_builder: impl Fn(&mut RangedBuilder<'_, ColorBrush>),
-    with_tree_builder: impl Fn(&mut TreeBuilder<'_, ColorBrush>),
+    root_style: &TextStyle<'b, ColorBrush>,
+    with_ranged_builder: impl Fn(&mut RangedBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>),
+    with_tree_builder: impl Fn(&mut TreeBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>),
 ) {
     let mut fcx = create_font_context();
 
@@ -206,13 +200,10 @@ fn assert_builders_produce_same_result<'b>(
 /// Returns a root style that uses non-default values.
 ///
 /// The [`TreeBuilder`] version of [`set_root_style`].
-fn create_root_style() -> TextStyle<'static, 'static, ColorBrush> {
+fn create_root_style() -> TextStyle<'static, ColorBrush> {
     TextStyle {
-        font_family: FontFamily::from(FONT_FAMILY_LIST),
+        font_selection: crate::FontRequestId(2),
         font_size: 20.,
-        font_width: FontWidth::CONDENSED,
-        font_style: FontStyle::Italic,
-        font_weight: FontWeight::BOLD,
         font_variations: FontVariations::empty(), // TODO: Set a non-default value
         font_features: FontFeatures::empty(),     // TODO: Set a non-default value
         locale: Some("en-US".parse().unwrap()),
@@ -244,12 +235,9 @@ fn create_root_style() -> TextStyle<'static, 'static, ColorBrush> {
 /// Sets a root style with non-default values.
 ///
 /// The [`RangedBuilder`] version of [`create_root_style`].
-fn set_root_style(rb: &mut RangedBuilder<'_, ColorBrush>) {
-    rb.push_default(FontFamily::from(FONT_FAMILY_LIST));
+fn set_root_style(rb: &mut RangedBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>) {
+    rb.push_default(crate::FontRequestId(2));
     rb.push_default(StyleProperty::FontSize(20.));
-    rb.push_default(StyleProperty::FontWidth(FontWidth::CONDENSED));
-    rb.push_default(StyleProperty::FontStyle(FontStyle::Italic));
-    rb.push_default(StyleProperty::FontWeight(FontWeight::BOLD));
     rb.push_default(FontVariations::empty());
     rb.push_default(FontFeatures::empty());
     rb.push_default(StyleProperty::Locale(Some("en-US".parse().unwrap())));
@@ -286,14 +274,15 @@ fn builders_default() {
     let quantize = false;
     let max_advance = Some(50.);
     let root_style = TextStyle {
-        font_family: FontFamily::from(FONT_FAMILY_LIST),
+        font_selection: crate::FontRequestId(1),
         ..TextStyle::default()
     };
 
-    let with_ranged_builder = |rb: &mut RangedBuilder<'_, ColorBrush>| {
-        rb.push_default(FontFamily::from(FONT_FAMILY_LIST));
-    };
-    let with_tree_builder = |tb: &mut TreeBuilder<'_, ColorBrush>| {
+    let with_ranged_builder =
+        |rb: &mut RangedBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>| {
+            rb.push_default(crate::FontRequestId(1));
+        };
+    let with_tree_builder = |tb: &mut TreeBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>| {
         tb.push_text(text);
     };
 
@@ -317,8 +306,8 @@ fn builders_style_runs_match_ranged() {
     let quantize = false;
     let max_advance = Some(120.);
 
-    let root_style: TextStyle<'static, 'static, ColorBrush> = TextStyle {
-        font_family: FontFamily::from(FONT_FAMILY_LIST),
+    let root_style: TextStyle<'static, ColorBrush> = TextStyle {
+        font_selection: crate::FontRequestId(1),
         ..TextStyle::default()
     };
 
@@ -339,7 +328,7 @@ fn builders_style_runs_match_ranged() {
     };
 
     let ranged = build_layout_with_ranged(&mut fcx, &mut lcx_a, &ropts, |rb| {
-        rb.push_default(FontFamily::from(FONT_FAMILY_LIST));
+        rb.push_default(crate::FontRequestId(1));
         rb.push(
             StyleProperty::FontSize(modified_style.font_size),
             split..text.len(),
@@ -351,14 +340,14 @@ fn builders_style_runs_match_ranged() {
     });
 
     let runs = build_layout_with_style_runs(&mut fcx, &mut lcx_b, &ropts, |rb| {
-        let family: FontFamily<'static> = root_style.font_family.clone().into_owned();
-        let root_run: TextStyle<'static, 'static, ColorBrush> = TextStyle {
-            font_family: family.clone(),
+        let family = root_style.font_selection;
+        let root_run: TextStyle<'static, ColorBrush> = TextStyle {
+            font_selection: family.clone(),
             ..root_style.clone()
         };
 
-        let modified_run: TextStyle<'static, 'static, ColorBrush> = TextStyle {
-            font_family: family,
+        let modified_run: TextStyle<'static, ColorBrush> = TextStyle {
+            font_selection: family,
             ..modified_style.clone()
         };
 
@@ -402,14 +391,14 @@ fn style_runs_first_run_can_use_nonzero_style_index() {
     });
 
     let runs = build_layout_with_style_runs(&mut fcx, &mut lcx_b, &ropts, |rb| {
-        let family: FontFamily<'static> = root_style.font_family.clone().into_owned();
-        let root_run: TextStyle<'static, 'static, ColorBrush> = TextStyle {
-            font_family: family.clone(),
+        let family = root_style.font_selection;
+        let root_run: TextStyle<'static, ColorBrush> = TextStyle {
+            font_selection: family.clone(),
             ..root_style.clone()
         };
 
-        let modified_run: TextStyle<'static, 'static, ColorBrush> = TextStyle {
-            font_family: family,
+        let modified_run: TextStyle<'static, ColorBrush> = TextStyle {
+            font_selection: family,
             ..modified_style.clone()
         };
 
@@ -434,10 +423,11 @@ fn builders_root_only() {
     let max_advance = Some(50.);
     let root_style = create_root_style();
 
-    let with_ranged_builder = |rb: &mut RangedBuilder<'_, ColorBrush>| {
-        set_root_style(rb);
-    };
-    let with_tree_builder = |tb: &mut TreeBuilder<'_, ColorBrush>| {
+    let with_ranged_builder =
+        |rb: &mut RangedBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>| {
+            set_root_style(rb);
+        };
+    let with_tree_builder = |tb: &mut TreeBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>| {
         tb.push_text(text);
     };
 
@@ -464,8 +454,9 @@ fn builders_empty() {
     let max_advance = Some(0.);
     let root_style = create_root_style();
 
-    let with_ranged_builder = |rb: &mut RangedBuilder<'_, ColorBrush>| set_root_style(rb);
-    let with_tree_builder = |_tb: &mut TreeBuilder<'_, ColorBrush>| {};
+    let with_ranged_builder =
+        |rb: &mut RangedBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>| set_root_style(rb);
+    let with_tree_builder = |_tb: &mut TreeBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>| {};
 
     assert_builders_produce_same_result(
         text,
@@ -487,18 +478,19 @@ fn builders_mixed_styles() {
     let max_advance = Some(50.);
     let root_style = create_root_style();
 
-    let with_ranged_builder = |rb: &mut RangedBuilder<'_, ColorBrush>| {
-        set_root_style(rb);
+    let with_ranged_builder =
+        |rb: &mut RangedBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>| {
+            set_root_style(rb);
 
-        // Make the first word bigger
-        rb.push(StyleProperty::FontSize(68.), 0..8);
-        // Push two modified styles for the same range
-        rb.push(StyleProperty::LetterSpacing(4.), 12..17);
-        rb.push(StyleProperty::WordSpacing(3.), 12..17);
-        // Plus, change the line height for the last letter
-        rb.push(StyleProperty::LineHeight(LineHeight::Absolute(40.)), 16..17);
-    };
-    let with_tree_builder = |tb: &mut TreeBuilder<'_, ColorBrush>| {
+            // Make the first word bigger
+            rb.push(StyleProperty::FontSize(68.), 0..8);
+            // Push two modified styles for the same range
+            rb.push(StyleProperty::LetterSpacing(4.), 12..17);
+            rb.push(StyleProperty::WordSpacing(3.), 12..17);
+            // Plus, change the line height for the last letter
+            rb.push(StyleProperty::LineHeight(LineHeight::Absolute(40.)), 16..17);
+        };
+    let with_tree_builder = |tb: &mut TreeBuilder<'_, ColorBrush, crate::FontiqueSession<'_>>| {
         // Make the first word bigger
         tb.push_style_modification_span(&[StyleProperty::FontSize(68.)]);
         tb.push_text(&text[..8]);
@@ -545,18 +537,18 @@ fn ranged_builder_reuse_layout() {
 
     let mut layout = Layout::new();
 
-    let mut builder = lcx.ranged_builder(&mut fcx, FIRST_TEXT, 1., false);
-    builder.push_default(FontFamily::from(FONT_FAMILY_LIST));
+    let mut builder = lcx.ranged_builder(fcx.session(), FIRST_TEXT, 1., false);
+    builder.push_default(crate::FontRequestId(1));
     builder.build_into(&mut layout, FIRST_TEXT);
     layout.break_all_lines(Some(MAX_ADVANCE));
 
-    let mut builder = lcx.ranged_builder(&mut fcx, SECOND_TEXT, 1., false);
-    builder.push_default(FontFamily::from(FONT_FAMILY_LIST));
+    let mut builder = lcx.ranged_builder(fcx.session(), SECOND_TEXT, 1., false);
+    builder.push_default(crate::FontRequestId(1));
     builder.build_into(&mut layout, SECOND_TEXT);
     layout.break_all_lines(Some(MAX_ADVANCE));
 
-    let mut builder = lcx.ranged_builder(&mut fcx, SECOND_TEXT, 1., false);
-    builder.push_default(FontFamily::from(FONT_FAMILY_LIST));
+    let mut builder = lcx.ranged_builder(fcx.session(), SECOND_TEXT, 1., false);
+    builder.push_default(crate::FontRequestId(1));
     let mut expected = builder.build(SECOND_TEXT);
     expected.break_all_lines(Some(MAX_ADVANCE));
 

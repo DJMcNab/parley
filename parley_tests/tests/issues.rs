@@ -149,6 +149,8 @@ fn issue_748_language_subtags() {
     let mut env = TestEnv::new(test_name!(), None);
     let text = "zh: 骨\nzh-Hans: 骨\nzh-Hant: 骨\nzh-TW: 骨\nzh-HK: 骨";
 
+    let font_request_0 =
+        env.font_request(FontFamily::named("Noto Sans CJK SC"), Default::default());
     let mut builder = env.ranged_builder(text);
     builder.push_default(StyleProperty::FontSize(32.0));
     for ((start, marker), language) in text
@@ -156,10 +158,7 @@ fn issue_748_language_subtags() {
         .zip(["zh", "zh-Hans", "zh-Hant", "zh-TW", "zh-HK"])
     {
         let range = start..start + marker.len();
-        builder.push(
-            StyleProperty::FontFamily(FontFamily::named("Noto Sans CJK SC")),
-            range.clone(),
-        );
+        builder.push(StyleProperty::FontSelection(font_request_0), range.clone());
         builder.push(
             StyleProperty::Locale(Some(language.parse().unwrap())),
             range,

@@ -71,7 +71,7 @@ pub struct Style<B: Brush> {
     ///
     /// This is useful for consumers exposing the text to assistive technologies,
     /// which use it to select an appropriate pronunciation.
-    pub locale: Option<fontique::Language>,
+    pub locale: Option<parlance::Language>,
 }
 
 /// Underline or strikethrough decoration.

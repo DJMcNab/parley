@@ -60,9 +60,15 @@ fn style_font_weight_values() {
         (FontWeight::BOLD, "bold"),
         (FontWeight::BLACK, "black"),
     ] {
+        let font_request_8 = env.font_request(
+            FontFamily::named("Roboto Flex"),
+            fontique::Attributes {
+                weight,
+                ..Default::default()
+            },
+        );
         let mut builder = env.ranged_builder(text);
-        builder.push_default(StyleProperty::FontFamily(FontFamily::named("Roboto Flex")));
-        builder.push_default(StyleProperty::FontWeight(weight));
+        builder.push_default(StyleProperty::FontSelection(font_request_8));
         let mut layout = builder.build(text);
         layout.break_all_lines(None);
 
@@ -105,10 +111,16 @@ fn style_font_weight_uses_variable_axis_default() {
     assert_eq!(font.weight(), FontWeight::THIN);
     assert_eq!(weight_axis.default, FontWeight::NORMAL.value());
 
+    let font_request_6 = env.font_request(
+        FontFamily::named(FAMILY),
+        fontique::Attributes {
+            weight: FontWeight::THIN,
+            ..Default::default()
+        },
+    );
     let mut builder = env.ranged_builder(TEXT);
     builder.push_default(StyleProperty::FontSize(48.0));
-    builder.push_default(StyleProperty::FontFamily(FontFamily::named(FAMILY)));
-    builder.push_default(StyleProperty::FontWeight(FontWeight::THIN));
+    builder.push_default(StyleProperty::FontSelection(font_request_6));
 
     // The first line relies on Fontique's synthesis. Give the second line the
     // equivalent variation explicitly so the snapshot includes a reference.
@@ -146,9 +158,15 @@ fn style_font_width_values() {
         (FontWidth::EXPANDED, "expanded"),
         (FontWidth::ULTRA_EXPANDED, "ultra_expanded"),
     ] {
+        let font_request_4 = env.font_request(
+            FontFamily::named("Roboto Flex"),
+            fontique::Attributes {
+                width,
+                ..Default::default()
+            },
+        );
         let mut builder = env.ranged_builder(text);
-        builder.push_default(StyleProperty::FontFamily(FontFamily::named("Roboto Flex")));
-        builder.push_default(StyleProperty::FontWidth(width));
+        builder.push_default(StyleProperty::FontSelection(font_request_4));
         let mut layout = builder.build(text);
         layout.break_all_lines(None);
 
@@ -175,9 +193,15 @@ fn style_font_style_values() {
         (FontStyle::Italic, "italic"),
         (FontStyle::Oblique(None), "oblique"),
     ] {
+        let font_request_2 = env.font_request(
+            FontFamily::named("Roboto Flex"),
+            fontique::Attributes {
+                style,
+                ..Default::default()
+            },
+        );
         let mut builder = env.ranged_builder(text);
-        builder.push_default(StyleProperty::FontFamily(FontFamily::named("Roboto Flex")));
-        builder.push_default(StyleProperty::FontStyle(style));
+        builder.push_default(StyleProperty::FontSelection(font_request_2));
         let mut layout = builder.build(text);
         layout.break_all_lines(None);
 
@@ -197,8 +221,9 @@ fn style_font_family_named() {
     use parley::style::FontFamily;
 
     // Test with Roboto (should be available in test fonts)
+    let font_request_0 = env.font_request(FontFamily::named("Roboto"), Default::default());
     let mut builder = env.ranged_builder(text);
-    builder.push_default(StyleProperty::FontFamily(FontFamily::named("Roboto")));
+    builder.push_default(StyleProperty::FontSelection(font_request_0));
     let mut layout = builder.build(text);
     layout.break_all_lines(None);
 

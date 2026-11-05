@@ -65,7 +65,15 @@ fn main() {
     let mut layout_cx = LayoutContext::new();
 
     // Create a RangedBuilder
-    let mut builder = layout_cx.ranged_builder(&mut font_cx, &text, display_scale, quantize);
+    let normal = font_cx.register_request(GenericFamily::SystemUi, Default::default());
+    let bold = font_cx.register_request(
+        GenericFamily::SystemUi,
+        parley::fontique::Attributes {
+            weight: FontWeight::new(600.0),
+            ..Default::default()
+        },
+    );
+    let mut builder = layout_cx.ranged_builder(font_cx.session(), &text, display_scale, quantize);
 
     // Set default text colour styles (set foreground text color)
     let foreground_brush = ColorBrush {
@@ -75,13 +83,12 @@ fn main() {
     builder.push_default(brush_style);
 
     // Set default font family
-    builder.push_default(GenericFamily::SystemUi);
+    builder.push_default(normal);
     builder.push_default(LineHeight::FontSizeRelative(1.3));
     builder.push_default(StyleProperty::FontSize(16.0));
 
     // Set the first 4 characters to bold
-    let bold = FontWeight::new(600.0);
-    builder.push(StyleProperty::FontWeight(bold), 0..4);
+    builder.push(StyleProperty::FontSelection(bold), 0..4);
 
     // Set the underline & strikethrough style
     builder.push(StyleProperty::Underline(true), 144..153);

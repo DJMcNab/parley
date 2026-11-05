@@ -8,8 +8,8 @@ use crate::layout::layout::Layout;
 use crate::layout::spacing::{EffectiveSpacing, Gaps, Justification};
 use crate::style::Brush;
 
+use crate::{FontRequestId, SyntheticStyle};
 use core::ops::Range;
-use fontique::Synthesis;
 use parley_engine::{
     Atom, Atoms, FontMetrics, Glyph, Graphemes, NormalizedCoord, ShapedClusterGlyphs, ShapedRun,
     ShapedSlice,
@@ -99,14 +99,13 @@ impl<'a, B: Brush> Run<'a, B> {
         self.shaped.font_size
     }
 
-    /// Returns the font attributes for the run.
-    pub fn font_attrs(&self) -> &'a fontique::Attributes {
-        &self.data.font_attrs
+    pub fn font_selection(&self) -> FontRequestId {
+        self.data.font_selection
     }
 
     /// Returns the synthesis suggestions for the font associated with the run.
-    pub fn synthesis(&self) -> Synthesis {
-        self.data.synthesis
+    pub fn synthetic_style(&self) -> SyntheticStyle {
+        self.data.synthetic_style
     }
 
     /// Returns the normalized variation coordinates for the font associated

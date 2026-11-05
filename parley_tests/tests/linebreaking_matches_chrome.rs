@@ -87,10 +87,8 @@ fn check_font(font_family: &str, expected_residuals: u64) {
         system_fonts: false,
     });
     collection.register_fonts(Blob::new(Arc::new(font.bytes.to_vec())), None);
-    let mut font_cx = FontContext {
-        collection,
-        source_cache: SourceCache::default(),
-    };
+    let mut font_cx = FontContext::from_parts(collection, SourceCache::default());
+    let font_request = font_cx.register_request(FontFamily::named(font.family), Default::default());
 
     let mut layout_cx = LayoutContext::<()>::new();
 
@@ -105,9 +103,9 @@ fn check_font(font_family: &str, expected_residuals: u64) {
             "This code is not written to be robust against non-ASCII text, primarily to the DOM's use of UTF-16."
         );
 
-        let mut builder = layout_cx.ranged_builder(&mut font_cx, &case.text, 1.0, false);
+        let mut builder = layout_cx.ranged_builder(font_cx.session(), &case.text, 1.0, false);
         builder.set_line_break_override(Some(CHROMIUM_LINE_BREAK_OVERRIDE));
-        builder.push_default(FontFamily::named(font.family));
+        builder.push_default(font_request);
         builder.push_default(StyleProperty::FontSize(chromium_quantized_font_size(
             case.font_size,
         )));

@@ -131,19 +131,30 @@ pub fn build_simple_layout(
     layout_cx: &mut LayoutContext<ColorBrush>,
     config: &ExampleConfig,
 ) -> (Layout<ColorBrush>, u16, u16) {
-    let mut builder =
-        layout_cx.ranged_builder(font_cx, &config.text, config.display_scale, config.quantize);
+    let normal = font_cx.register_request(GenericFamily::SystemUi, Default::default());
+    let bold = font_cx.register_request(
+        GenericFamily::SystemUi,
+        parley::fontique::Attributes {
+            weight: FontWeight::new(600.0),
+            ..Default::default()
+        },
+    );
+    let mut builder = layout_cx.ranged_builder(
+        font_cx.session(),
+        &config.text,
+        config.display_scale,
+        config.quantize,
+    );
 
     let foreground_brush = ColorBrush {
         color: config.foreground_color,
     };
     builder.push_default(StyleProperty::Brush(foreground_brush));
-    builder.push_default(GenericFamily::SystemUi);
+    builder.push_default(normal);
     builder.push_default(LineHeight::FontSizeRelative(1.3));
     builder.push_default(StyleProperty::FontSize(16.0));
 
-    let bold = FontWeight::new(600.0);
-    builder.push(StyleProperty::FontWeight(bold), 0..4);
+    builder.push(StyleProperty::FontSelection(bold), 0..4);
 
     let purple_brush = ColorBrush {
         color: Color::from_rgb8(128, 0, 128),
@@ -179,20 +190,32 @@ pub fn build_rich_layout(
         .register_fonts(Blob::new(Arc::new(colr_font_data)), None);
 
     let (underline_range, strikethrough_range, party_emoji_range) = style_ranges(&config.text);
+    let emoji = font_cx.register_request(FontFamily::named("Noto Color Emoji"), Default::default());
 
-    let mut builder =
-        layout_cx.ranged_builder(font_cx, &config.text, config.display_scale, config.quantize);
+    let normal = font_cx.register_request(GenericFamily::SystemUi, Default::default());
+    let bold = font_cx.register_request(
+        GenericFamily::SystemUi,
+        parley::fontique::Attributes {
+            weight: FontWeight::new(600.0),
+            ..Default::default()
+        },
+    );
+    let mut builder = layout_cx.ranged_builder(
+        font_cx.session(),
+        &config.text,
+        config.display_scale,
+        config.quantize,
+    );
 
     let foreground_brush = ColorBrush {
         color: config.foreground_color,
     };
     builder.push_default(StyleProperty::Brush(foreground_brush));
-    builder.push_default(GenericFamily::SystemUi);
+    builder.push_default(normal);
     builder.push_default(LineHeight::FontSizeRelative(1.3));
     builder.push_default(StyleProperty::FontSize(16.0));
 
-    let bold = FontWeight::new(600.0);
-    builder.push(StyleProperty::FontWeight(bold), 0..4);
+    builder.push(StyleProperty::FontSelection(bold), 0..4);
 
     let purple_brush = ColorBrush {
         color: Color::from_rgb8(128, 0, 128),
@@ -205,7 +228,7 @@ pub fn build_rich_layout(
 
     builder.push(StyleProperty::Underline(true), underline_range);
     builder.push(StyleProperty::Strikethrough(true), strikethrough_range);
-    builder.push(FontFamily::named("Noto Color Emoji"), party_emoji_range);
+    builder.push(emoji, party_emoji_range);
     builder.push_inline_box(InlineBox {
         id: 0,
         kind: InlineBoxKind::InFlow,

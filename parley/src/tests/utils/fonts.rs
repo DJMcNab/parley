@@ -57,8 +57,43 @@ pub(crate) fn create_font_context() -> FontContext {
                 .unwrap_or_else(|| panic!("{font_name} font not found"));
         }
     }
-    FontContext {
-        collection,
-        source_cache: SourceCache::default(),
-    }
+    let mut context = FontContext::from_parts(collection, SourceCache::default());
+    assert_eq!(
+        context
+            .register_request(FONT_FAMILY_LIST, Default::default())
+            .0,
+        1
+    );
+    assert_eq!(
+        context
+            .register_request(
+                FONT_FAMILY_LIST,
+                fontique::Attributes {
+                    width: fontique::FontWidth::CONDENSED,
+                    style: fontique::FontStyle::Italic,
+                    weight: fontique::FontWeight::BOLD,
+                }
+            )
+            .0,
+        2
+    );
+    assert_eq!(
+        context
+            .register_request(parlance::FontFamily::named("Roboto"), Default::default())
+            .0,
+        3
+    );
+    assert_eq!(
+        context
+            .register_request(
+                FONT_FAMILY_LIST,
+                fontique::Attributes {
+                    weight: fontique::FontWeight::BOLD,
+                    ..Default::default()
+                }
+            )
+            .0,
+        4
+    );
+    context
 }

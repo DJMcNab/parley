@@ -131,12 +131,15 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+#[cfg(feature = "fontique")]
 pub use fontique;
 
 mod analysis;
 mod builder;
 mod context;
 mod font;
+#[cfg(feature = "fontique")]
+mod fontique_adapter;
 mod inline_box;
 mod resolve;
 mod shape;
@@ -148,6 +151,8 @@ pub mod setting;
 pub mod style;
 
 #[cfg(test)]
+mod font_source_tests;
+#[cfg(all(test, feature = "fontique"))]
 mod tests;
 
 pub use linebender_resource_handle::FontData;
@@ -160,7 +165,12 @@ pub use parley_engine::break_overrides::{
 
 pub use builder::{RangedBuilder, StyleRunBuilder, TreeBuilder};
 pub use context::LayoutContext;
-pub use font::FontContext;
+pub use font::{
+    FontInstance, FontInstanceRef, FontRequest, FontRequestId, FontSource, Presentation,
+    SyntheticStyle,
+};
+#[cfg(feature = "fontique")]
+pub use fontique_adapter::{FontContext, FontiqueSession};
 pub use inline_box::{InlineBox, InlineBoxKind};
 #[doc(inline)]
 pub use layout::Layout;

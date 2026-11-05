@@ -6,9 +6,9 @@
 use crate::util::TestEnv;
 use crate::{test_name, util::ColorBrush};
 use parley::{
-    Alignment, AlignmentOptions, BreakReason, ContentWidths, FontFamily, FontWeight, InlineBox,
-    InlineBoxKind, Layout, LineHeight, PositionedLayoutItem, StyleProperty, TextStyle,
-    TextWrapMode, VerticalAlign, WhiteSpaceCollapse,
+    Alignment, AlignmentOptions, BreakReason, ContentWidths, FontWeight, InlineBox, InlineBoxKind,
+    Layout, LineHeight, PositionedLayoutItem, StyleProperty, TextStyle, TextWrapMode,
+    VerticalAlign, WhiteSpaceCollapse,
 };
 use peniko::color::{AlphaColor, Srgb, palette};
 use peniko::kurbo::Size;
@@ -628,12 +628,19 @@ fn collapsed_space_belongs_to_first_span() {
 
     // Whitespace spanning a span boundary collapses into a single space, which belongs to the span
     // the whitespace sequence started in.
+    let font_request_0 = env.font_request(
+        crate::util::env::FONT_FAMILY_LIST,
+        fontique::Attributes {
+            weight: FontWeight::BOLD,
+            ..Default::default()
+        },
+    );
     let mut builder = env.tree_builder();
     builder.push_style_modification_span(&[StyleProperty::WhiteSpaceCollapse(
         WhiteSpaceCollapse::Collapse,
     )]);
     builder.push_text("aa ");
-    builder.push_style_modification_span(&[StyleProperty::FontWeight(FontWeight::BOLD)]);
+    builder.push_style_modification_span(&[StyleProperty::FontSelection(font_request_0)]);
     builder.push_text(" bb");
     builder.pop_style_span();
     let (mut layout, text) = builder.build();
@@ -693,7 +700,7 @@ fn collapsed_space_wraps_if_any_collapsed_span_wraps() {
 #[test]
 fn nested_span_inheritance() {
     let ts = |c: AlphaColor<Srgb>| TextStyle {
-        font_family: FontFamily::from(crate::util::env::FONT_FAMILY_LIST),
+        font_selection: parley::FontRequestId(1),
         font_size: 24.,
         line_height: LineHeight::Absolute(30.),
         brush: ColorBrush::new(c),

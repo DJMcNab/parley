@@ -15,7 +15,7 @@ use core::{
 use crate::editing::{Cursor, Selection};
 use crate::layout::{Affinity, Alignment, AlignmentOptions, Layout};
 use crate::style::Brush;
-use crate::{BaseDirection, BoundingBox, FontContext, LayoutContext, StyleProperty, StyleSet};
+use crate::{BaseDirection, BoundingBox, FontSource, LayoutContext, StyleProperty, StyleSet};
 
 /// Opaque representation of a generation.
 ///
@@ -147,16 +147,16 @@ where
 ///
 /// This can perform operations which require the editor's layout to
 /// be up-to-date by refreshing it as necessary.
-pub struct PlainEditorDriver<'a, T>
+pub struct PlainEditorDriver<'a, T, F: FontSource>
 where
     T: Brush + Clone + Debug + PartialEq + Default,
 {
     pub editor: &'a mut PlainEditor<T>,
-    pub font_cx: &'a mut FontContext,
+    pub font_cx: F,
     pub layout_cx: &'a mut LayoutContext<T>,
 }
 
-impl<T> PlainEditorDriver<'_, T>
+impl<T, F: FontSource> PlainEditorDriver<'_, T, F>
 where
     T: Brush + Clone + Debug + PartialEq + Default,
 {
@@ -164,7 +164,7 @@ where
     /// Insert at cursor, or replace selection.
     pub fn insert_or_replace_selection(&mut self, s: &str) {
         self.editor
-            .replace_selection(self.font_cx, self.layout_cx, s);
+            .replace_selection(&mut self.font_cx, self.layout_cx, s);
     }
 
     /// Delete the selection.
@@ -762,18 +762,19 @@ where
     // --- MARK: Rendering ---
     /// Get the up-to-date layout for this driver.
     pub fn layout(&mut self) -> &Layout<T> {
-        self.editor.layout(self.font_cx, self.layout_cx)
+        self.editor.layout(&mut self.font_cx, self.layout_cx)
     }
 
     // --- MARK: Internal helpers---
     /// Update the layout if needed.
     pub fn refresh_layout(&mut self) {
-        self.editor.refresh_layout(self.font_cx, self.layout_cx);
+        self.editor
+            .refresh_layout(&mut self.font_cx, self.layout_cx);
     }
 
     /// Update the layout unconditionally.
     fn update_layout(&mut self) {
-        self.editor.update_layout(self.font_cx, self.layout_cx);
+        self.editor.update_layout(&mut self.font_cx, self.layout_cx);
     }
 }
 
@@ -785,11 +786,11 @@ where
     ///
     /// This type is only used to simplify methods which require both
     /// the editor and the provided contexts.
-    pub fn driver<'drv>(
+    pub fn driver<'drv, F: FontSource>(
         &'drv mut self,
-        font_cx: &'drv mut FontContext,
+        font_cx: F,
         layout_cx: &'drv mut LayoutContext<T>,
-    ) -> PlainEditorDriver<'drv, T> {
+    ) -> PlainEditorDriver<'drv, T, F> {
         PlainEditorDriver {
             editor: self,
             font_cx,
@@ -1054,7 +1055,7 @@ where
     /// be used instead.
     pub fn layout(
         &mut self,
-        font_cx: &mut FontContext,
+        font_cx: &mut impl FontSource,
         layout_cx: &mut LayoutContext<T>,
     ) -> &Layout<T> {
         self.refresh_layout(font_cx, layout_cx);
@@ -1081,7 +1082,11 @@ where
     ///
     /// This should only be used alongside [`try_layout`](Self::try_layout), if that will be
     /// called in a scope where the contexts are not available.
-    pub fn refresh_layout(&mut self, font_cx: &mut FontContext, layout_cx: &mut LayoutContext<T>) {
+    pub fn refresh_layout(
+        &mut self,
+        font_cx: &mut impl FontSource,
+        layout_cx: &mut LayoutContext<T>,
+    ) {
         if self.layout_dirty {
             self.update_layout(font_cx, layout_cx);
         }
@@ -1130,7 +1135,7 @@ where
 
     fn replace_selection(
         &mut self,
-        font_cx: &mut FontContext,
+        font_cx: &mut impl FontSource,
         layout_cx: &mut LayoutContext<T>,
         s: &str,
     ) {
@@ -1195,7 +1200,7 @@ where
         self.selection = new_sel;
     }
     /// Update the layout.
-    fn update_layout(&mut self, font_cx: &mut FontContext, layout_cx: &mut LayoutContext<T>) {
+    fn update_layout(&mut self, font_cx: &mut impl FontSource, layout_cx: &mut LayoutContext<T>) {
         let mut builder =
             layout_cx.ranged_builder(font_cx, &self.buffer, self.scale, self.quantize);
         builder.set_base_direction(self.base_direction);

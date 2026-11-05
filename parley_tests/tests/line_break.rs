@@ -229,10 +229,10 @@ fn break_by_length_with_emoji() {
     let mut env = TestEnv::new(test_name!(), None);
 
     let text = "✅👀🎉🤠✅👀";
+    let font_request_2 =
+        env.font_request(FontFamily::named("Noto Color Emoji"), Default::default());
     let mut builder = env.ranged_builder(text);
-    builder.push_default(StyleProperty::FontFamily(FontFamily::named(
-        "Noto Color Emoji",
-    )));
+    builder.push_default(StyleProperty::FontSelection(font_request_2));
     let mut layout = builder.build(text);
 
     // Break at 1, 3, 2 clusters -> expect 3 lines
@@ -251,10 +251,10 @@ fn break_by_length_with_emoji_only() {
     let mut env = TestEnv::new(test_name!(), None);
 
     let text = "✅👀🎉🤠";
+    let font_request_1 =
+        env.font_request(FontFamily::named("Noto Color Emoji"), Default::default());
     let mut builder = env.ranged_builder(text);
-    builder.push_default(StyleProperty::FontFamily(FontFamily::named(
-        "Noto Color Emoji",
-    )));
+    builder.push_default(StyleProperty::FontSelection(font_request_1));
     let mut layout = builder.build(text);
 
     // Break at 2 clusters each -> expect 2 lines
@@ -276,10 +276,10 @@ fn break_by_length_with_multi_codepoint_emoji() {
     // Simple emoji: ✅ = 1 codepoint (in the bundled subset)
     // Total = 10 characters, forming 3 grapheme clusters
     let text = "👨‍👩‍👧‍👦🇺🇸✅";
+    let font_request_0 =
+        env.font_request(FontFamily::named("Noto Color Emoji"), Default::default());
     let mut builder = env.ranged_builder(text);
-    builder.push_default(StyleProperty::FontFamily(FontFamily::named(
-        "Noto Color Emoji",
-    )));
+    builder.push_default(StyleProperty::FontSelection(font_request_0));
     let mut layout = builder.build(text);
 
     // Break at visual emoji boundaries: 7 (family), 2 (flag), 1 (simple) characters

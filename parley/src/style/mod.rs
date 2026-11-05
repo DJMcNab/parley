@@ -7,7 +7,7 @@ mod brush;
 mod font;
 mod styleset;
 
-use alloc::borrow::Cow;
+use crate::FontRequestId;
 
 #[cfg(feature = "libm")]
 #[allow(unused_imports)]
@@ -19,7 +19,7 @@ pub use font::{
     FontFamily, FontFamilyName, FontFeature, FontFeatures, FontStyle, FontVariation,
     FontVariations, FontWeight, FontWidth, GenericFamily,
 };
-pub use fontique::Language;
+pub use parlance::Language;
 pub use parlance::{LineBreak, OverflowWrap, TextWrapMode, WordBreak};
 pub use styleset::StyleSet;
 
@@ -248,16 +248,9 @@ impl VerticalAlign {
 /// Properties that define a style.
 #[derive(Clone, PartialEq, Debug)]
 pub enum StyleProperty<'a, B: Brush> {
-    /// CSS `font-family` property value.
-    FontFamily(FontFamily<'a>),
+    FontSelection(FontRequestId),
     /// Font size.
     FontSize(f32),
-    /// Font width.
-    FontWidth(FontWidth),
-    /// Font style.
-    FontStyle(FontStyle),
-    /// Font weight.
-    FontWeight(FontWeight),
     /// Font variation settings.
     FontVariations(FontVariations<'a>),
     /// Font feature settings.
@@ -306,17 +299,10 @@ pub enum StyleProperty<'a, B: Brush> {
 
 /// Unresolved styles.
 #[derive(Clone, PartialEq, Debug)]
-pub struct TextStyle<'family, 'settings, B: Brush> {
-    /// CSS `font-family` property value.
-    pub font_family: FontFamily<'family>,
+pub struct TextStyle<'settings, B: Brush> {
+    pub font_selection: FontRequestId,
     /// Font size.
     pub font_size: f32,
-    /// Font width.
-    pub font_width: FontWidth,
-    /// Font style.
-    pub font_style: FontStyle,
-    /// Font weight.
-    pub font_weight: FontWeight,
     /// Font variation settings.
     pub font_variations: FontVariations<'settings>,
     /// Font feature settings.
@@ -363,14 +349,11 @@ pub struct TextStyle<'family, 'settings, B: Brush> {
     pub collapsed_space: CollapsedSpace,
 }
 
-impl<B: Brush> Default for TextStyle<'static, 'static, B> {
+impl<B: Brush> Default for TextStyle<'static, B> {
     fn default() -> Self {
         TextStyle {
-            font_family: FontFamily::Source(Cow::Borrowed("sans-serif")),
+            font_selection: FontRequestId::default(),
             font_size: 16.0,
-            font_width: FontWidth::default(),
-            font_style: FontStyle::default(),
-            font_weight: FontWeight::default(),
             font_variations: FontVariations::empty(),
             font_features: FontFeatures::empty(),
             locale: None,
@@ -397,21 +380,9 @@ impl<B: Brush> Default for TextStyle<'static, 'static, B> {
     }
 }
 
-impl<'a, B: Brush> From<FontFamily<'a>> for StyleProperty<'a, B> {
-    fn from(value: FontFamily<'a>) -> Self {
-        StyleProperty::FontFamily(value)
-    }
-}
-
-impl<'a, B: Brush> From<&'a [FontFamilyName<'a>]> for StyleProperty<'a, B> {
-    fn from(value: &'a [FontFamilyName<'a>]) -> Self {
-        StyleProperty::FontFamily(value.into())
-    }
-}
-
-impl<'a, B: Brush> From<FontFamilyName<'a>> for StyleProperty<'a, B> {
-    fn from(value: FontFamilyName<'a>) -> Self {
-        StyleProperty::FontFamily(value.into())
+impl<B: Brush> From<FontRequestId> for StyleProperty<'_, B> {
+    fn from(value: FontRequestId) -> Self {
+        Self::FontSelection(value)
     }
 }
 
@@ -427,12 +398,6 @@ impl<'a, B: Brush> From<FontFeatures<'a>> for StyleProperty<'a, B> {
     }
 }
 
-impl<B: Brush> From<GenericFamily> for StyleProperty<'_, B> {
-    fn from(f: GenericFamily) -> Self {
-        StyleProperty::FontFamily(f.into())
-    }
-}
-
 impl<B: Brush> From<LineHeight> for StyleProperty<'_, B> {
     fn from(value: LineHeight) -> Self {
         StyleProperty::LineHeight(value)
@@ -442,24 +407,6 @@ impl<B: Brush> From<LineHeight> for StyleProperty<'_, B> {
 impl<B: Brush> From<VerticalAlign> for StyleProperty<'_, B> {
     fn from(value: VerticalAlign) -> Self {
         StyleProperty::VerticalAlign(value)
-    }
-}
-
-impl<B: Brush> From<FontWidth> for StyleProperty<'_, B> {
-    fn from(value: FontWidth) -> Self {
-        StyleProperty::FontWidth(value)
-    }
-}
-
-impl<B: Brush> From<FontStyle> for StyleProperty<'_, B> {
-    fn from(value: FontStyle) -> Self {
-        StyleProperty::FontStyle(value)
-    }
-}
-
-impl<B: Brush> From<FontWeight> for StyleProperty<'_, B> {
-    fn from(value: FontWeight) -> Self {
-        StyleProperty::FontWeight(value)
     }
 }
 

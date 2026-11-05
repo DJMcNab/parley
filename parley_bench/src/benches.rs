@@ -5,10 +5,9 @@
 //!
 //! This module provides benchmarks for text layout and rendering.
 
-use crate::{ColorBrush, FONT_FAMILY_LIST, Sample, get_samples, with_contexts};
+use crate::{ColorBrush, Sample, get_samples, with_contexts};
 use parley::{
-    Alignment, AlignmentOptions, FontFamily, FontStyle, FontWeight, Layout, PositionedLayoutItem,
-    StyleProperty,
+    Alignment, AlignmentOptions, FontRequestId, Layout, PositionedLayoutItem, StyleProperty,
 };
 use std::hint::black_box;
 use std::ops::Range;
@@ -31,9 +30,13 @@ pub fn defaults() -> Vec<Benchmark> {
                     b.iter(|| {
                         let text = &sample.text;
                         with_contexts(|font_cx, layout_cx| {
-                            let mut builder =
-                                layout_cx.ranged_builder(font_cx, text, DISPLAY_SCALE, QUANTIZE);
-                            builder.push_default(FontFamily::from(FONT_FAMILY_LIST));
+                            let mut builder = layout_cx.ranged_builder(
+                                font_cx.session(),
+                                text,
+                                DISPLAY_SCALE,
+                                QUANTIZE,
+                            );
+                            builder.push_default(FontRequestId(1));
 
                             let mut layout: Layout<ColorBrush> = builder.build(text);
                             layout.break_all_lines(Some(MAX_ADVANCE));
@@ -69,9 +72,13 @@ pub fn spacing() -> Vec<Benchmark> {
                     b.iter(|| {
                         let text = &sample.text;
                         with_contexts(|font_cx, layout_cx| {
-                            let mut builder =
-                                layout_cx.ranged_builder(font_cx, text, DISPLAY_SCALE, QUANTIZE);
-                            builder.push_default(FontFamily::from(FONT_FAMILY_LIST));
+                            let mut builder = layout_cx.ranged_builder(
+                                font_cx.session(),
+                                text,
+                                DISPLAY_SCALE,
+                                QUANTIZE,
+                            );
+                            builder.push_default(FontRequestId(1));
                             builder.push_default(StyleProperty::WordSpacing(WORD_SPACING));
                             builder.push_default(StyleProperty::LetterSpacing(LETTER_SPACING));
 
@@ -174,8 +181,8 @@ fn styled_spans(
         .enumerate()
         .filter_map(|(style_idx, range)| {
             let style = match style_idx % 5 {
-                0 => StyleProperty::FontStyle(FontStyle::Italic),
-                1 => StyleProperty::FontWeight(FontWeight::BOLD),
+                0 => StyleProperty::FontSelection(FontRequestId(2)),
+                1 => StyleProperty::FontSelection(FontRequestId(3)),
                 2 => StyleProperty::Underline(true),
                 3 => StyleProperty::Strikethrough(true),
                 4 => return None, // Default style
@@ -277,8 +284,16 @@ pub fn iterate_glyph_runs() -> Vec<Benchmark> {
     for (label, chunk_len, style) in [
         ("non-splitting", 1, StyleProperty::Underline(true)),
         ("non-splitting", 16, StyleProperty::Underline(true)),
-        ("splitting", 1, StyleProperty::FontWeight(FontWeight::BOLD)),
-        ("splitting", 16, StyleProperty::FontWeight(FontWeight::BOLD)),
+        (
+            "splitting",
+            1,
+            StyleProperty::FontSelection(FontRequestId(3)),
+        ),
+        (
+            "splitting",
+            16,
+            StyleProperty::FontSelection(FontRequestId(3)),
+        ),
     ] {
         benchmarks.push(benchmark_fn(
             format!(
@@ -441,8 +456,9 @@ pub(crate) fn build_layout<'a>(
     const QUANTIZE: bool = true;
 
     with_contexts(|font_cx, layout_cx| {
-        let mut builder = layout_cx.ranged_builder(font_cx, text, DISPLAY_SCALE, QUANTIZE);
-        builder.push_default(FontFamily::from(FONT_FAMILY_LIST));
+        let mut builder =
+            layout_cx.ranged_builder(font_cx.session(), text, DISPLAY_SCALE, QUANTIZE);
+        builder.push_default(FontRequestId(1));
         for (style, range) in styles {
             builder.push(style, range);
         }
@@ -524,8 +540,9 @@ pub fn long_line() -> Vec<Benchmark> {
 
     fn layout_long_line(text: &str, max_advance: Option<f32>, alignment: Alignment) {
         with_contexts(|font_cx, layout_cx| {
-            let mut builder = layout_cx.ranged_builder(font_cx, text, DISPLAY_SCALE, QUANTIZE);
-            builder.push_default(FontFamily::from(FONT_FAMILY_LIST));
+            let mut builder =
+                layout_cx.ranged_builder(font_cx.session(), text, DISPLAY_SCALE, QUANTIZE);
+            builder.push_default(FontRequestId(1));
 
             let mut layout: Layout<ColorBrush> = builder.build(text);
             layout.set_alignment(alignment, AlignmentOptions::default());

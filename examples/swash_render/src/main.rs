@@ -65,8 +65,15 @@ fn main() {
     // Setup some Parley text styles
     let text_brush = ColorBrush { color: text_color };
     let brush_style = StyleProperty::Brush(text_brush);
-    let font_family = FontFamily::from("system-ui");
-    let bold_style = StyleProperty::FontWeight(FontWeight::new(600.0));
+    let font_selection =
+        font_cx.register_request(FontFamily::from("system-ui"), Default::default());
+    let bold_style = StyleProperty::FontSelection(font_cx.register_request(
+        FontFamily::from("system-ui"),
+        parley::fontique::Attributes {
+            weight: FontWeight::new(600.0),
+            ..Default::default()
+        },
+    ));
     let underline_style = StyleProperty::Underline(true);
     let strikethrough_style = StyleProperty::Strikethrough(true);
 
@@ -78,14 +85,14 @@ fn main() {
 
         let root_style = TextStyle {
             brush: text_brush,
-            font_family,
+            font_selection,
             line_height: LineHeight::FontSizeRelative(1.3),
             font_size: 16.0,
             ..TextStyle::default()
         };
 
         let mut builder =
-            layout_cx.tree_builder(&mut font_cx, display_scale, quantize, &root_style);
+            layout_cx.tree_builder(font_cx.session(), display_scale, quantize, &root_style);
 
         builder.push_style_modification_span(&[bold_style]);
         builder.push_text(&text[0..5]);
@@ -148,13 +155,14 @@ fn main() {
         );
 
         // Creates a RangedBuilder
-        let mut builder = layout_cx.ranged_builder(&mut font_cx, &text, display_scale, quantize);
+        let mut builder =
+            layout_cx.ranged_builder(font_cx.session(), &text, display_scale, quantize);
 
         // Set default text colour styles (set foreground text color)
         builder.push_default(brush_style);
 
         // Set default font family
-        builder.push_default(font_family);
+        builder.push_default(font_selection);
         builder.push_default(LineHeight::FontSizeRelative(1.3));
         builder.push_default(StyleProperty::FontSize(16.0));
 

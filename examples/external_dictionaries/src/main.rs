@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let text = "วันนี้อากาศดีมาก";
     let mut fonts = FontContext::new();
     let mut context = LayoutContext::new();
-    let mut builder = context.ranged_builder(&mut fonts, text, 1., true);
+    let mut builder = context.ranged_builder(fonts.session(), text, 1., true);
     // Try commenting out this line to see what happens!
     builder.set_dictionary_provider(Some(&dictionaries));
     let mut layout: Layout<()> = builder.build(text);

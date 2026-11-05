@@ -35,15 +35,19 @@ pub struct ShapeOptions<'a> {
     pub variations: &'a [FontVariation],
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SyntheticStyle {
+    pub embolden: bool,
+    pub skew_degrees: Option<f32>,
+}
+
 /// The font instance to shape an item with.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FontInstance {
     /// The font.
     pub font: FontData,
-    /// Font synthesis suggestions.
-    // TODO: Synthesis carries more than we need, and ties us to `fontique`. We can likely change
-    // this to opaque user data.
-    pub synthesis: fontique::Synthesis,
+    pub variations: Vec<FontVariation>,
+    pub synthetic_style: SyntheticStyle,
 }
 
 impl FontInstance {
@@ -53,7 +57,8 @@ impl FontInstance {
         FontInstanceRef {
             data: &self.font.data,
             index: self.font.index,
-            synthesis: &self.synthesis,
+            variations: &self.variations,
+            synthetic_style: self.synthetic_style,
         }
     }
 }
@@ -65,8 +70,8 @@ pub struct FontInstanceRef<'a> {
     pub data: &'a Blob<u8>,
     /// Index of the font in a collection, or 0 for a single font.
     pub index: u32,
-    /// Font synthesis suggestions.
-    pub synthesis: &'a fontique::Synthesis,
+    pub variations: &'a [FontVariation],
+    pub synthetic_style: SyntheticStyle,
 }
 
 impl From<FontInstanceRef<'_>> for FontInstance {
@@ -77,7 +82,8 @@ impl From<FontInstanceRef<'_>> for FontInstance {
                 data: font.data.clone(),
                 index: font.index,
             },
-            synthesis: *font.synthesis,
+            variations: font.variations.to_vec(),
+            synthetic_style: font.synthetic_style,
         }
     }
 }
@@ -303,13 +309,13 @@ fn shape_segment(
             cache::ShapeInstanceKey::new(
                 font.font.data.id(),
                 font.font.index,
-                &font.synthesis,
+                &font.variations,
                 Some(options.variations),
             ),
             || {
                 base_font
                     .instance_builder()
-                    .variations(variations_iter(&font.synthesis, options.variations))
+                    .variations(variations_iter(&font.variations, options.variations))
                     .build()
             },
         );
@@ -458,23 +464,18 @@ fn shape_segment(
 
 #[inline]
 fn variations_iter<'a>(
-    synthesis: &'a fontique::Synthesis,
+    font: &'a [FontVariation],
     item: &'a [FontVariation],
 ) -> impl Iterator<Item = harfrust::font::Variation> + 'a {
-    synthesis
-        .variation_settings()
-        .iter()
-        .map(|(tag, value)| harfrust::font::Variation {
-            tag: *tag,
-            value: *value,
-        })
-        .chain(item.iter().map(|variation| harfrust::font::Variation {
+    font.iter()
+        .chain(item)
+        .map(|variation| harfrust::font::Variation {
             tag: harfrust::Tag::new(&variation.tag.to_bytes()),
             value: variation.value,
-        }))
+        })
 }
 
-pub(crate) fn script_to_harfrust(script: fontique::Script) -> harfrust::Script {
+pub(crate) fn script_to_harfrust(script: parlance::Script) -> harfrust::Script {
     harfrust::Script::from_iso15924_tag(harfrust::Tag::new(&script.to_bytes()))
         .unwrap_or(harfrust::Script::UNKNOWN)
 }

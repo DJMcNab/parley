@@ -41,7 +41,7 @@ pub(crate) struct ShapeInstanceId {
     font_blob_id: u64,
     /// The font's index in the font collection.
     font_index: u32,
-    synthesis: fontique::Synthesis,
+    font_variations: Box<[FontVariation]>,
     variations: Option<Box<[FontVariation]>>,
 }
 
@@ -50,7 +50,7 @@ pub(crate) struct ShapeInstanceKey<'a> {
     font_blob_id: u64,
     /// The font's index in the font collection.
     font_index: u32,
-    synthesis: &'a fontique::Synthesis,
+    font_variations: &'a [FontVariation],
     variations: Option<&'a [FontVariation]>,
 }
 
@@ -58,13 +58,13 @@ impl<'a> ShapeInstanceKey<'a> {
     pub(crate) const fn new(
         font_blob_id: u64,
         font_index: u32,
-        synthesis: &'a fontique::Synthesis,
+        font_variations: &'a [FontVariation],
         variations: Option<&'a [FontVariation]>,
     ) -> Self {
         Self {
             font_blob_id,
             font_index,
-            synthesis,
+            font_variations,
             variations,
         }
     }
@@ -75,7 +75,7 @@ impl<'a> Equivalent<ShapeInstanceId> for ShapeInstanceKey<'a> {
     fn equivalent(&self, key: &ShapeInstanceId) -> bool {
         self.font_blob_id == key.font_blob_id
             && self.font_index == key.font_index
-            && *self.synthesis == key.synthesis
+            && self.font_variations == &*key.font_variations
             && self.variations == key.variations.as_deref()
     }
 }
@@ -86,7 +86,7 @@ impl<'a> From<ShapeInstanceKey<'a>> for ShapeInstanceId {
         Self {
             font_blob_id: key.font_blob_id,
             font_index: key.font_index,
-            synthesis: *key.synthesis,
+            font_variations: key.font_variations.into(),
             variations: key.variations.map(|v| v.to_vec().into()),
         }
     }

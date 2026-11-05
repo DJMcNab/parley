@@ -122,9 +122,15 @@ fn interaction_font_weight_vs_variations() {
     use parley::style::FontFamily;
 
     // FontWeight only
+    let font_request_12 = env.font_request(
+        FontFamily::named("Arimo"),
+        fontique::Attributes {
+            weight: FontWeight::BOLD,
+            ..Default::default()
+        },
+    );
     let mut builder_weight = env.ranged_builder(text);
-    builder_weight.push_default(StyleProperty::FontFamily(FontFamily::named("Arimo")));
-    builder_weight.push_default(StyleProperty::FontWeight(FontWeight::BOLD));
+    builder_weight.push_default(StyleProperty::FontSelection(font_request_12));
     let mut layout_weight = builder_weight.build(text);
     layout_weight.break_all_lines(None);
 
@@ -137,8 +143,9 @@ fn interaction_font_weight_vs_variations() {
         value: 700.0,
     }]));
 
+    let font_request_10 = env.font_request(FontFamily::named("Arimo"), Default::default());
     let mut builder_variation = env.ranged_builder(text);
-    builder_variation.push_default(StyleProperty::FontFamily(FontFamily::named("Arimo")));
+    builder_variation.push_default(StyleProperty::FontSelection(font_request_10));
     builder_variation.push_default(StyleProperty::FontVariations(variations.clone()));
     let mut layout_variation = builder_variation.build(text);
     layout_variation.break_all_lines(None);
@@ -147,9 +154,15 @@ fn interaction_font_weight_vs_variations() {
         .check_layout_snapshot(&layout_variation);
 
     // Both FontWeight and FontVariations - which takes precedence?
+    let font_request_9 = env.font_request(
+        FontFamily::named("Arimo"),
+        fontique::Attributes {
+            weight: FontWeight::LIGHT,
+            ..Default::default()
+        },
+    );
     let mut builder_both = env.ranged_builder(text);
-    builder_both.push_default(StyleProperty::FontFamily(FontFamily::named("Arimo")));
-    builder_both.push_default(StyleProperty::FontWeight(FontWeight::LIGHT)); // 300
+    builder_both.push_default(StyleProperty::FontSelection(font_request_9)); // 300
     builder_both.push_default(StyleProperty::FontVariations(variations)); // 700
     let mut layout_both = builder_both.build(text);
     layout_both.break_all_lines(None);
@@ -238,9 +251,15 @@ fn interaction_weight_style_width() {
         value: -10.0,
     }]));
 
+    let font_request_7 = env.font_request(
+        FontFamily::named("Roboto Flex"),
+        fontique::Attributes {
+            weight: FontWeight::BOLD,
+            ..Default::default()
+        },
+    );
     let mut builder_bold_italic = env.ranged_builder(text);
-    builder_bold_italic.push_default(StyleProperty::FontFamily(FontFamily::named("Roboto Flex")));
-    builder_bold_italic.push_default(StyleProperty::FontWeight(FontWeight::BOLD));
+    builder_bold_italic.push_default(StyleProperty::FontSelection(font_request_7));
     builder_bold_italic.push_default(StyleProperty::FontVariations(italic_variation.clone()));
     let mut layout_bold_italic = builder_bold_italic.build(text);
     layout_bold_italic.break_all_lines(None);
@@ -249,11 +268,16 @@ fn interaction_weight_style_width() {
         .check_layout_snapshot(&layout_bold_italic);
 
     // Light + Condensed
+    let font_request_5 = env.font_request(
+        FontFamily::named("Roboto Flex"),
+        fontique::Attributes {
+            weight: FontWeight::LIGHT,
+            width: FontWidth::CONDENSED,
+            ..Default::default()
+        },
+    );
     let mut builder_light_condensed = env.ranged_builder(text);
-    builder_light_condensed
-        .push_default(StyleProperty::FontFamily(FontFamily::named("Roboto Flex")));
-    builder_light_condensed.push_default(StyleProperty::FontWeight(FontWeight::LIGHT));
-    builder_light_condensed.push_default(StyleProperty::FontWidth(FontWidth::CONDENSED));
+    builder_light_condensed.push_default(StyleProperty::FontSelection(font_request_5));
     let mut layout_light_condensed = builder_light_condensed.build(text);
     layout_light_condensed.break_all_lines(None);
 
@@ -261,10 +285,16 @@ fn interaction_weight_style_width() {
         .check_layout_snapshot(&layout_light_condensed);
 
     // Black + Expanded + Italic (using slnt axis)
+    let font_request_2 = env.font_request(
+        FontFamily::named("Roboto Flex"),
+        fontique::Attributes {
+            weight: FontWeight::BLACK,
+            width: FontWidth::EXPANDED,
+            ..Default::default()
+        },
+    );
     let mut builder_complex = env.ranged_builder(text);
-    builder_complex.push_default(StyleProperty::FontFamily(FontFamily::named("Roboto Flex")));
-    builder_complex.push_default(StyleProperty::FontWeight(FontWeight::BLACK));
-    builder_complex.push_default(StyleProperty::FontWidth(FontWidth::EXPANDED));
+    builder_complex.push_default(StyleProperty::FontSelection(font_request_2));
     builder_complex.push_default(StyleProperty::FontVariations(italic_variation));
     let mut layout_complex = builder_complex.build(text);
     layout_complex.break_all_lines(None);

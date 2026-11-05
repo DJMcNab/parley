@@ -92,6 +92,11 @@ impl<'a> Query<'a> {
         }
     }
 
+    pub fn clear_fallbacks(&mut self) {
+        self.state.fallback_families.clear();
+        self.fallbacks = None;
+    }
+
     /// Sets the script and locale for fallback fonts.
     pub fn set_fallbacks(&mut self, key: impl Into<FallbackKey>) {
         let key = key.into();

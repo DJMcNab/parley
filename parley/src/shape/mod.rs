@@ -5,7 +5,7 @@
 //! and `icu` for text analysis.
 
 use alloc::vec::Vec;
-use parley_engine::shape::{CharCluster, Coverage};
+use parley_engine::shape::{CharCluster, Coverage, FontCoverageCache};
 use parley_engine::{Analysis, FontInstance, FontInstanceRef, ShapeOptions, Shaper};
 use smallvec::SmallVec;
 
@@ -14,10 +14,9 @@ use super::resolve::{ResolveContext, ResolvedStyle};
 use super::style::{Brush, FontFeature};
 use crate::inline_box::LayoutInlineBox;
 use crate::util::{nearly_eq, nearly_zero};
-use crate::{FontContext, FontData, Spacing};
+use crate::{FontRequest, FontSource, Presentation, Spacing};
 
-use fontique::{self, Query, QueryFamily, QueryFont};
-use parlance::{BidiLevel, GenericFamily, Tag};
+use parlance::{BidiLevel, Tag};
 
 /// If these font features are passed to the shaper, optional ligatures are not applied.
 ///
@@ -41,14 +40,15 @@ const OPTIONAL_LIGATURES_OFF: [FontFeature; 4] = [
     FontFeature::new(Tag::new(b"hlig"), 0),
 ];
 
-pub(crate) fn shape_text<'a, B: Brush>(
+pub(crate) fn shape_text<'a, B: Brush, F: FontSource>(
     rcx: &'a ResolveContext,
-    fcx: &'a mut FontContext,
+    fcx: &'a mut F,
     styles: &'a [ResolvedStyle<B>],
     inline_boxes: &[LayoutInlineBox],
     analysis: &Analysis,
     char_style_indices: &[u16],
     scx: &mut Shaper,
+    font_coverage: &mut FontCoverageCache,
     text: &str,
     layout: &mut Layout<B>,
     style_features: &'a mut Vec<SmallVec<[FontFeature; 8]>>,
@@ -61,8 +61,6 @@ pub(crate) fn shape_text<'a, B: Brush>(
         }
         return;
     }
-
-    let mut fq = fcx.collection.query(&mut fcx.source_cache);
 
     let mut out_of_flow_box_iter = inline_boxes
         .iter()
@@ -173,7 +171,12 @@ pub(crate) fn shape_text<'a, B: Brush>(
         })
     };
 
-    let font_selector = FontSelector::new(&mut fq, rcx, styles);
+    let font_selector = FontSelector {
+        source: fcx,
+        styles,
+        coverage: font_coverage,
+        selected: None,
+    };
 
     scx.shape_text(
         text,
@@ -246,219 +249,64 @@ pub(crate) fn shape_text<'a, B: Brush>(
     }
 }
 
-/// The font to use if a font query doesn't return any font candidates at all.
-#[derive(Debug)]
-enum LastResortFont {
-    Unresolved,
-    Resolved(FontInstance),
-    Unavailable,
-}
-
-struct FontSelector<'a, 'b, B: Brush> {
-    query: &'b mut Query<'a>,
-    fonts_id: Option<usize>,
-    rcx: &'a ResolveContext,
+struct FontSelector<'a, B: Brush, F: FontSource> {
+    source: &'a mut F,
     styles: &'a [ResolvedStyle<B>],
-    style_index: u16,
-    attrs: fontique::Attributes,
-
-    /// Whether [`Self::query`] yields any font, cached.
-    query_yields_font: Option<bool>,
-
-    /// The font to use if [`Self::query`] doesn't return any font.
-    last_resort_font: LastResortFont,
+    coverage: &'a mut FontCoverageCache,
+    selected: Option<FontInstance>,
 }
 
-impl<'a, 'b, B: Brush> FontSelector<'a, 'b, B> {
-    /// Construct a new `FontSelector`.
-    ///
-    /// If `query` ends up not returning a font for a query, the `last_resort_font` is returned
-    /// instead.
-    fn new(
-        query: &'b mut Query<'a>,
-        rcx: &'a ResolveContext,
-        styles: &'a [ResolvedStyle<B>],
-    ) -> Self {
-        let attrs = fontique::Attributes::default();
-
-        Self {
-            query,
-            fonts_id: None,
-            rcx,
-            styles,
-            style_index: 0,
-            attrs,
-            query_yields_font: None,
-            last_resort_font: LastResortFont::Unresolved,
-        }
-    }
-}
-
-impl<'a, 'b, B: Brush> parley_engine::FontSelector for FontSelector<'a, 'b, B> {
-    fn begin_segment(
+impl<B: Brush, F: FontSource> parley_engine::FontSelector for FontSelector<'_, B, F> {
+    fn select_font(
         &mut self,
         segment: &parley_engine::itemize::Segment,
         options: &ShapeOptions<'_>,
-    ) {
-        self.query.set_fallbacks(fontique::FallbackKey::new(
-            segment.script,
-            options.language.as_ref(),
-        ));
-        self.query_yields_font = None;
-    }
-
-    fn select_font(
-        &mut self,
-        _segment: &parley_engine::itemize::Segment,
-        _options: &ShapeOptions<'_>,
         cluster: &mut CharCluster,
     ) -> Option<FontInstanceRef<'_>> {
-        let style_index = cluster.style_index();
-        let is_emoji = cluster.is_emoji();
-
-        if style_index != self.style_index || is_emoji || self.fonts_id.is_none() {
-            self.style_index = style_index;
-            let style = &self.styles[style_index as usize];
-
-            let fonts_id = style.font_family.id();
-            let fonts = self.rcx.stack(style.font_family).unwrap_or(&[]);
-            let fonts = fonts.iter().copied().map(QueryFamily::Id);
-            if is_emoji {
-                use core::iter::once;
-                let emoji_family = QueryFamily::Generic(GenericFamily::Emoji);
-                self.query.set_families(fonts.chain(once(emoji_family)));
-                self.fonts_id = None;
-                self.query_yields_font = None;
-            } else if self.fonts_id != Some(fonts_id) {
-                self.query.set_families(fonts);
-                self.fonts_id = Some(fonts_id);
-                self.query_yields_font = None;
-            }
-
-            let attrs = fontique::Attributes {
-                width: style.font_width,
-                weight: style.font_weight,
-                style: style.font_style,
-            };
-            if self.attrs != attrs {
-                self.query.set_attributes(attrs);
-                self.attrs = attrs;
-                self.query_yields_font = None;
-            }
-        }
-
-        // Fall back to the last-resort font if the query doesn't yield a font (with a charmap) at
-        // all. This is checked before the actual query below due to lifetime issues. While this is
-        // not *too* expensive, once the new borrow checker (Polonius) is stable, we could remove
-        // this check and do the last-resort scan after the failed query:
-        // <https://blog.rust-lang.org/2026/08/04/enabling-polonius-alpha-on-nightly/>.
-        let query = &mut *self.query;
-        let query_yields_font = *self.query_yields_font.get_or_insert_with(|| {
-            let mut yields_font = false;
-            query.matches_with(|font| {
-                if font.charmap().is_some() {
-                    yields_font = true;
-                    fontique::QueryStatus::Stop
-                } else {
-                    fontique::QueryStatus::Continue
-                }
-            });
-            yields_font
-        });
-        if !query_yields_font {
-            if matches!(self.last_resort_font, LastResortFont::Unresolved) {
-                if let Some(font) = any_font(self.query) {
-                    self.last_resort_font = LastResortFont::Resolved(FontInstance {
-                        font: FontData {
-                            data: font.blob,
-                            index: font.index,
-                        },
-                        synthesis: font.synthesis,
-                    });
-                } else {
-                    self.last_resort_font = LastResortFont::Unavailable;
-                }
-
-                self.fonts_id = None;
-            }
-
-            return if let LastResortFont::Resolved(ref font) = self.last_resort_font {
-                Some(font.as_ref())
+        let request = FontRequest {
+            id: self.styles[usize::from(cluster.style_index())].font_selection,
+            script: segment.script,
+            language: options.language.as_ref(),
+            presentation: if cluster.is_emoji() {
+                Presentation::Emoji
             } else {
-                None
-            };
-        }
-
-        let mut selected_font = None;
+                Presentation::Text
+            },
+        };
+        let mut best = self.selected.take();
+        let mut found = false;
         let mut best_coverage = Coverage::NONE;
-
-        self.query.matches_with(|font| {
-            let Some(charmap) = font.charmap() else {
-                return fontique::QueryStatus::Continue;
+        let coverage_cache = &mut self.coverage;
+        self.source.candidates(&request, |font| {
+            let Some(coverage) = coverage_cache.coverage(font, cluster) else {
+                return core::ops::ControlFlow::Continue(());
             };
-
-            let coverage = cluster.calculate_coverage(|ch| {
-                charmap
-                    .map(ch)
-                    .map(|g| {
-                        // Any non-zero value indicates the existence of a glyph.
-                        g != 0
-                    })
-                    .unwrap_or_default()
-            });
-            if coverage > best_coverage {
-                selected_font = Some(font);
-                best_coverage = coverage;
-
-                if coverage.is_complete() {
-                    fontique::QueryStatus::Stop
+            if !found || coverage > best_coverage {
+                if let Some(best) = &mut best {
+                    if best.as_ref() != font {
+                        best.font.data = font.data.clone();
+                        best.font.index = font.index;
+                        best.variations.clear();
+                        best.variations.extend_from_slice(font.variations);
+                        best.synthetic_style = font.synthetic_style;
+                    }
                 } else {
-                    fontique::QueryStatus::Continue
+                    best = Some(FontInstance::from(font));
                 }
+                found = true;
+                best_coverage = coverage;
+            }
+            if coverage.is_complete() {
+                core::ops::ControlFlow::Break(())
             } else {
-                if selected_font.is_none() {
-                    selected_font = Some(font);
-                }
-                fontique::QueryStatus::Continue
+                core::ops::ControlFlow::Continue(())
             }
         });
-
-        selected_font.map(|font| FontInstanceRef {
-            data: &font.blob,
-            index: font.index,
-            synthesis: &font.synthesis,
-        })
+        self.selected = if found {
+            best
+        } else {
+            self.source.last_resort(&request).map(Into::into)
+        };
+        self.selected.as_ref().map(FontInstance::as_ref)
     }
-}
-
-/// Just query for any generic family's font from the font collection.
-///
-/// This sets generic families on `query`, so callers need to make sure to set families back again.
-/// This returns `None` if it doesn't find any fonts, but note this only checks generic families.
-///
-/// This can be used to have a font at hand for shaping, in case more sophisticated font querying
-/// returns no fonts.
-fn any_font(query: &mut Query<'_>) -> Option<QueryFont> {
-    let mut found = None;
-
-    // Try the system's generic text families.
-    //
-    // At this point, the font itself doesn't really matter: we mostly just need any font to work
-    // with. This has a cost, as it extends our query's candidate font families with all the generic
-    // families registered on the system. A better future may be to allow users to register some
-    // last resort in `fontique`, or pass it directly to `parley`.
-    query.set_families([
-        QueryFamily::Generic(GenericFamily::SansSerif),
-        QueryFamily::Generic(GenericFamily::Serif),
-        QueryFamily::Generic(GenericFamily::Monospace),
-    ]);
-    query.matches_with(
-        #[inline]
-        |font: &QueryFont| {
-            found = Some(font.clone());
-            fontique::QueryStatus::Stop
-        },
-    );
-
-    found
 }

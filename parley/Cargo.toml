@@ -15,18 +15,19 @@ all-features = true
 
 [features]
 default = ["system"]
+fontique = ["dep:fontique"]
 # Get floating point functions from the standard library
 # (likely using your target's libc).
-std = ["fontique/std", "parley_engine/std", "peniko/std", "parlance/std"]
+std = ["fontique?/std", "parley_engine/std", "peniko/std", "parlance/std"]
 # Use floating point implementations from libm.
 # This is useful for `no_std` environments.
 # However, note that the `libm` crate is not as efficient as the standard library.
-libm = ["fontique/libm", "parley_engine/libm", "peniko/libm", "dep:core_maths"]
+libm = ["fontique?/libm", "parley_engine/libm", "peniko/libm", "dep:core_maths"]
 # Forwarded to `parlance`, which then implements traits from `bytemuck` on its types.
-bytemuck = ["fontique/bytemuck", "parlance/bytemuck", "parley_engine/bytemuck"]
+bytemuck = ["fontique?/bytemuck", "parlance/bytemuck", "parley_engine/bytemuck"]
 # Enable support for system font backends.
 # This also enables `std`.
-system = ["std", "fontique/system"]
+system = ["std", "fontique", "fontique/system"]
 # Enable dictionary-based line and word breaking for complex scripts (CJK, Thai, Khmer, Lao, Myanmar).
 # When disabled, a lightweight segmenter is used that falls back to character-level breaks for those scripts.
 complex-scripts = ["parley_engine/complex-scripts"]
@@ -34,7 +35,7 @@ complex-scripts = ["parley_engine/complex-scripts"]
 [dependencies]
 smallvec = { workspace = true }
 linebender_resource_handle = { workspace = true }
-fontique = { workspace = true }
+fontique = { workspace = true, optional = true }
 parlance = { workspace = true }
 parley_engine = { workspace = true }
 core_maths = { version = "0.1.1", optional = true }

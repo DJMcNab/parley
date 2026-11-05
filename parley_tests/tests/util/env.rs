@@ -106,10 +106,14 @@ pub(crate) fn create_font_context() -> FontContext {
                 .unwrap_or_else(|| panic!("{font_name} font not found"));
         }
     }
-    FontContext {
-        collection,
-        source_cache: SourceCache::default(),
-    }
+    let mut context = FontContext::from_parts(collection, SourceCache::default());
+    assert_eq!(
+        context
+            .register_request(FONT_FAMILY_LIST, Default::default())
+            .0,
+        1
+    );
+    context
 }
 
 impl TestEnv {
@@ -159,6 +163,14 @@ impl TestEnv {
         &mut self.font_cx
     }
 
+    pub(crate) fn font_request<'a>(
+        &mut self,
+        families: impl Into<FontFamily<'a>>,
+        attributes: fontique::Attributes,
+    ) -> parley::FontRequestId {
+        self.font_cx.register_request(families, attributes)
+    }
+
     pub(crate) fn collection(&mut self) -> &mut Collection {
         &mut self.font_cx.collection
     }
@@ -176,29 +188,34 @@ impl TestEnv {
             StyleProperty::Brush(ColorBrush {
                 color: self.text_color,
             }),
-            StyleProperty::FontFamily(FontFamily::List(FONT_FAMILY_LIST.into())),
+            StyleProperty::FontSelection(parley::FontRequestId(1)),
             // When our tests were originally generated, they used this style value, as it was the default.
             // To avoid regenerating all tests, as the default has now changed, set this explicitly.
             StyleProperty::LineHeight(LineHeight::FontSizeRelative(1.0)),
         ]
     }
 
-    pub(crate) fn ranged_builder<'a>(&'a mut self, text: &'a str) -> RangedBuilder<'a, ColorBrush> {
+    pub(crate) fn ranged_builder<'a>(
+        &'a mut self,
+        text: &'a str,
+    ) -> RangedBuilder<'a, ColorBrush, parley::FontiqueSession<'a>> {
         let default_style = self.default_style();
         let mut builder = self
             .layout_cx
-            .ranged_builder(&mut self.font_cx, text, 1.0, true);
+            .ranged_builder(self.font_cx.session(), text, 1.0, true);
         for style in default_style {
             builder.push_default(style);
         }
         builder
     }
 
-    pub(crate) fn tree_builder(&mut self) -> TreeBuilder<'_, ColorBrush> {
+    pub(crate) fn tree_builder(
+        &mut self,
+    ) -> TreeBuilder<'_, ColorBrush, parley::FontiqueSession<'_>> {
         let default_style = self.default_style();
         let mut builder =
             self.layout_cx
-                .tree_builder(&mut self.font_cx, 1.0, true, &TextStyle::default());
+                .tree_builder(self.font_cx.session(), 1.0, true, &TextStyle::default());
         builder.push_style_modification_span(&default_style);
         builder
     }
@@ -206,8 +223,8 @@ impl TestEnv {
     pub(crate) fn driver<'a>(
         &'a mut self,
         editor: &'a mut PlainEditor<ColorBrush>,
-    ) -> PlainEditorDriver<'a, ColorBrush> {
-        editor.driver(&mut self.font_cx, &mut self.layout_cx)
+    ) -> PlainEditorDriver<'a, ColorBrush, parley::FontiqueSession<'a>> {
+        editor.driver(self.font_cx.session(), &mut self.layout_cx)
     }
 
     pub(crate) fn editor(&mut self, text: &str) -> PlainEditor<ColorBrush> {
@@ -283,7 +300,7 @@ impl TestEnv {
     }
 
     pub(crate) fn check_editor_snapshot(&mut self, editor: &mut PlainEditor<ColorBrush>) {
-        editor.refresh_layout(&mut self.font_cx, &mut self.layout_cx);
+        editor.refresh_layout(&mut self.font_cx.session(), &mut self.layout_cx);
         self.render_and_check_snapshot(
             editor.try_layout().unwrap(),
             editor.cursor_geometry(self.cursor_size),

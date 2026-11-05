@@ -93,6 +93,7 @@ impl LayoutAccessibility {
         x_offset: f64,
         y_offset: f64,
         set_brush_properties: impl Fn(&mut Node, &Style<B>),
+        font_attributes: impl Fn(parley::FontRequestId) -> Option<parley::fontique::Attributes>,
     ) {
         self.span_paths_by_access_id.clear();
         self.span_positions_by_cluster_path.clear();
@@ -160,6 +161,7 @@ impl LayoutAccessibility {
                     &mut next_node_id,
                     spans_started,
                     &run,
+                    font_attributes(run.font_selection()),
                     alignment,
                     span_path,
                 );
@@ -225,6 +227,7 @@ impl LayoutAccessibility {
                                 &mut next_node_id,
                                 spans_started,
                                 &run,
+                                font_attributes(run.font_selection()),
                                 alignment,
                                 span_path,
                             );
@@ -389,6 +392,7 @@ impl LayoutAccessibility {
         next_node_id: &mut impl FnMut() -> NodeId,
         span_index: usize,
         run: &Run<'_, B>,
+        attrs: Option<parley::fontique::Attributes>,
         alignment: Option<Alignment>,
         span_path: ClusterPath,
     ) -> (NodeId, Node) {
@@ -426,10 +430,11 @@ impl LayoutAccessibility {
             }
         }
         node.set_font_size(run.font_size());
-        let attrs = run.font_attrs();
-        node.set_font_weight(attrs.weight.value());
-        if matches!(attrs.style, FontStyle::Italic) {
-            node.set_italic();
+        if let Some(attrs) = attrs {
+            node.set_font_weight(attrs.weight.value());
+            if matches!(attrs.style, FontStyle::Italic) {
+                node.set_italic();
+            }
         }
         if let Some(align) = alignment {
             node.set_text_align(match align {
@@ -477,7 +482,7 @@ impl PlainEditorAccessibility {
     /// arguments.
     pub fn build_nodes<B: Brush>(
         &mut self,
-        driver: &mut PlainEditorDriver<'_, B>,
+        driver: &mut PlainEditorDriver<'_, B, parley::FontiqueSession<'_>>,
         update: &mut TreeUpdate,
         node: &mut Node,
         next_node_id: impl FnMut() -> NodeId,
@@ -499,6 +504,7 @@ impl PlainEditorAccessibility {
             x_offset,
             y_offset,
             set_brush_properties,
+            |id| driver.font_cx.request_attributes(id).copied(),
         );
         // The IME can ask for the caret to be hidden, in which case there is no
         // selection to report.
@@ -520,7 +526,7 @@ impl PlainEditorAccessibility {
     /// Returns `true` if the request was handled.
     pub fn handle_action_request<B: Brush>(
         &self,
-        driver: &mut PlainEditorDriver<'_, B>,
+        driver: &mut PlainEditorDriver<'_, B, parley::FontiqueSession<'_>>,
         request: &accesskit::ActionRequest,
     ) -> bool {
         if request.action == Action::SetTextSelection
@@ -536,7 +542,7 @@ impl PlainEditorAccessibility {
     /// [`Self::build_nodes`].
     pub fn select_from_access_selection<B: Brush>(
         &self,
-        driver: &mut PlainEditorDriver<'_, B>,
+        driver: &mut PlainEditorDriver<'_, B, parley::FontiqueSession<'_>>,
         selection: &TextSelection,
     ) {
         driver.refresh_layout();
