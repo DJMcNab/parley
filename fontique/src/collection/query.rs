@@ -3,6 +3,9 @@
 
 //! Query support.
 
+#[cfg(test)]
+mod tests;
+
 use crate::{Charmap, CharmapIndex};
 
 use super::super::{Collection, SourceCache, matching::match_fonts};
@@ -171,18 +174,26 @@ impl<'a> Query<'a> {
         }
     }
 
-    /// Returns the [first available font] for the current settings: the first
-    /// font that [`matches_with`](Self::matches_with) would yield, if any.
+    /// Returns the [first available font] for the current settings, if any,
+    /// in the order yielded by [`matches_with`](Self::matches_with).
     ///
-    /// CSS additionally requires the font's `unicode-range` to include U+0020
-    /// SPACE; fontique has no `unicode-range`, so every available font qualifies.
+    /// Fonts whose declared Unicode range excludes U+0020 SPACE are skipped.
+    /// The font need not actually contain a glyph for SPACE.
     ///
     /// [first available font]: https://drafts.csswg.org/css-fonts-4/#first-available-font
     pub fn first_available_font(&mut self) -> Option<QueryFont> {
         let mut found = None;
         self.matches_with(|font| {
-            found = Some(font.clone());
-            QueryStatus::Stop
+            if font
+                .unicode_range
+                .as_ref()
+                .is_none_or(|range| range.contains(' '))
+            {
+                found = Some(font.clone());
+                QueryStatus::Stop
+            } else {
+                QueryStatus::Continue
+            }
         });
         found
     }
@@ -250,12 +261,17 @@ pub struct QueryFont {
     pub synthesis: Synthesis,
     /// Data used for constructing a character map for this font.
     pub charmap_index: CharmapIndex,
+    /// Declared Unicode coverage restriction. `None` means unrestricted.
+    pub unicode_range: Option<crate::UnicodeRangeSet>,
 }
 
 impl QueryFont {
-    /// Attempts to construct a [Charmap] for this font.
+    /// Attempts to construct a [Charmap] restricted to this registration's
+    /// declared Unicode coverage.
     pub fn charmap(&self) -> Option<Charmap<'_>> {
-        self.charmap_index.charmap(self.blob.as_ref())
+        let mut charmap = self.charmap_index.charmap(self.blob.as_ref())?;
+        charmap.unicode_range = self.unicode_range.as_ref();
+        Some(charmap)
     }
 }
 
@@ -296,6 +312,7 @@ fn load_bucket<'a>(
                         attributes.weight,
                     ),
                     charmap_index: font_info.charmap_index(),
+                    unicode_range: font_info.unicode_range().cloned(),
                 });
             }
             if fonts.is_empty() {
@@ -335,6 +352,7 @@ fn load_font<'a>(
                 index: blob_index,
                 synthesis,
                 charmap_index: font_info.charmap_index(),
+                unicode_range: font_info.unicode_range().cloned(),
             });
             if let Entry::Ok(font) = status {
                 Some(font)

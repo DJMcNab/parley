@@ -25,6 +25,7 @@ pub struct FontInfo {
     axes: AxisVec,
     attr_axes: u8,
     charmap_index: CharmapIndex,
+    unicode_range: Option<crate::UnicodeRangeSet>,
 }
 
 impl FontInfo {
@@ -211,6 +212,13 @@ impl FontInfo {
     pub fn charmap_index(&self) -> CharmapIndex {
         self.charmap_index
     }
+
+    /// Returns the declared Unicode coverage restriction, if any.
+    ///
+    /// An omitted or full-Unicode range is represented by `None`.
+    pub fn unicode_range(&self) -> Option<&crate::UnicodeRangeSet> {
+        self.unicode_range.as_ref()
+    }
 }
 
 impl FontInfo {
@@ -256,6 +264,7 @@ impl FontInfo {
             axes,
             attr_axes,
             charmap_index,
+            unicode_range: None,
         })
     }
 
@@ -278,6 +287,9 @@ impl FontInfo {
     }
 
     pub(crate) fn apply_override(&mut self, info_override: &FontInfoOverride<'_>) {
+        if let Some(range) = info_override.unicode_range {
+            self.unicode_range = (!range.is_full()).then(|| range.clone());
+        }
         if let Some(width) = info_override.width {
             self.width = width;
         }
@@ -489,6 +501,10 @@ pub struct FontInfoOverride<'a> {
     /// Default values for the font's variation axes. Axes not included within
     /// the font will be ignored.
     pub axes: Option<&'a [(Tag, f32)]>,
+    /// Declared Unicode coverage. Characters outside this set are unavailable,
+    /// even if present in the font. Omission means unrestricted coverage; an
+    /// empty set makes the registration cover nothing.
+    pub unicode_range: Option<&'a crate::UnicodeRangeSet>,
 }
 
 #[cfg(test)]

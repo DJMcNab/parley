@@ -3,6 +3,9 @@
 
 //! Shaping of text.
 
+#[cfg(all(test, feature = "std"))]
+mod tests;
+
 use alloc::vec::Vec;
 use harfrust::ShapeOptions as HarfShapeOptions;
 use linebender_resource_handle::{Blob, FontData};
@@ -44,6 +47,8 @@ pub struct FontInstance {
     // TODO: Synthesis carries more than we need, and ties us to `fontique`. We can likely change
     // this to opaque user data.
     pub synthesis: fontique::Synthesis,
+    /// Declared character coverage. `None` means unrestricted.
+    pub unicode_range: Option<fontique::UnicodeRangeSet>,
 }
 
 impl FontInstance {
@@ -54,6 +59,7 @@ impl FontInstance {
             data: &self.font.data,
             index: self.font.index,
             synthesis: &self.synthesis,
+            unicode_range: self.unicode_range.as_ref(),
         }
     }
 }
@@ -67,6 +73,8 @@ pub struct FontInstanceRef<'a> {
     pub index: u32,
     /// Font synthesis suggestions.
     pub synthesis: &'a fontique::Synthesis,
+    /// Declared character coverage. `None` means unrestricted.
+    pub unicode_range: Option<&'a fontique::UnicodeRangeSet>,
 }
 
 impl From<FontInstanceRef<'_>> for FontInstance {
@@ -78,6 +86,7 @@ impl From<FontInstanceRef<'_>> for FontInstance {
                 index: font.index,
             },
             synthesis: *font.synthesis,
+            unicode_range: font.unicode_range.cloned(),
         }
     }
 }
@@ -366,8 +375,11 @@ fn shape_segment(
         buffer.set_script(Some(hb_script));
         buffer.set_language(language.clone());
 
+        let range_funcs = font.unicode_range.as_ref().map(RangeFontFuncs);
+        let funcs = range_funcs.as_ref().map(|f| f as &dyn harfrust::FontFuncs);
+        let shaper_font = harfrust::ShaperFont::new(instance).with_font_funcs(funcs);
         harfrust::shape(
-            &harfrust::ShaperFont::new(instance),
+            &shaper_font,
             buffer,
             HarfShapeOptions::new()
                 .plan(Some(shaper_plan))
@@ -454,6 +466,44 @@ fn shape_segment(
     }
 
     Ok(())
+}
+
+/// Restrict nominal characters, not glyphs produced by substitution.
+struct RangeFontFuncs<'a>(&'a fontique::UnicodeRangeSet);
+
+impl harfrust::FontFuncs for RangeFontFuncs<'_> {
+    fn nominal_glyph(
+        &self,
+        font: &harfrust::ShaperFont<'_, '_>,
+        c: u32,
+    ) -> Option<harfrust::GlyphId> {
+        self.0
+            .contains(c)
+            .then(|| font.default_nominal_glyph(c))
+            .flatten()
+    }
+
+    fn variation_glyph(
+        &self,
+        font: &harfrust::ShaperFont<'_, '_>,
+        c: u32,
+        vs: u32,
+    ) -> Option<harfrust::GlyphId> {
+        self.0
+            .contains(c)
+            .then(|| font.default_variation_glyph(c, vs))
+            .flatten()
+    }
+
+    fn glyph_h_advances(
+        &self,
+        font: &harfrust::ShaperFont<'_, '_>,
+        advances: harfrust::Advances<'_>,
+    ) {
+        // Only character mapping is customized. Retain the optimized built-in
+        // batch metrics path rather than the trait's per-glyph fallback.
+        font.default_glyph_h_advances(advances);
+    }
 }
 
 #[inline]

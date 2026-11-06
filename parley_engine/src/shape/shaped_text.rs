@@ -734,6 +734,7 @@ mod tests {
         FontInstance {
             font: FontData::new(Blob::new(Arc::new(font_data)), 0),
             synthesis: Synthesis::default(),
+            unicode_range: None,
         }
     }
 
@@ -772,6 +773,94 @@ mod tests {
         shaped
     }
 
+    fn all_glyphs(shaped: &ShapedText) -> Vec<super::Glyph> {
+        let mut glyphs = Vec::new();
+        for (index, run) in shaped.runs().iter().enumerate() {
+            let slice = shaped.run_slice(index.try_into().unwrap());
+            for cluster in run.shaped_clusters_range.clone() {
+                glyphs.extend(slice.shaped_cluster_glyphs(cluster));
+            }
+        }
+        glyphs
+    }
+
+    #[test]
+    fn unicode_range_masks_real_glyphs_and_preserves_permitted_glyphs() {
+        let mut font = font_instance(ROBOTO);
+        font.unicode_range = Some(fontique::UnicodeRangeSet::new(&mut vec![(0x30, 0x39)]));
+        let shaped = all_glyphs(&shape_with_font_selector("A3", SingleFont(font), false));
+        let reference = all_glyphs(&shape_with_font("A3", ROBOTO));
+        assert_ne!(reference[0].id, 0);
+        assert_eq!(shaped[0].id, 0);
+        assert_eq!(shaped[1], reference[1]);
+    }
+
+    #[test]
+    fn unicode_range_is_part_of_shaping_run_identity() {
+        let unrestricted = font_instance(ROBOTO);
+        let mut restricted = unrestricted.clone();
+        restricted.unicode_range = Some(fontique::UnicodeRangeSet::new(&mut vec![(0x61, 0x61)]));
+        let shaped = shape_with_font_selector(
+            "aba",
+            FontForChar {
+                ch: 'b',
+                font: restricted,
+                other_font: unrestricted,
+            },
+            false,
+        );
+        assert_eq!(shaped.runs().len(), 3);
+        let glyphs = all_glyphs(&shaped);
+        assert_ne!(glyphs[0].id, 0);
+        assert_eq!(glyphs[1].id, 0);
+        assert_ne!(glyphs[2].id, 0);
+    }
+
+    #[test]
+    fn unicode_range_participates_in_shaper_normalization() {
+        let mut font = font_instance(ROBOTO);
+        font.unicode_range = Some(fontique::UnicodeRangeSet::new(&mut vec![(0xE9, 0xE9)]));
+        let composed = all_glyphs(&shape_with_font_selector(
+            "é",
+            SingleFont(font.clone()),
+            false,
+        ));
+        let decomposed = all_glyphs(&shape_with_font_selector(
+            "e\u{301}",
+            SingleFont(font),
+            false,
+        ));
+        assert_eq!(composed.len(), 1);
+        assert_ne!(composed[0].id, 0);
+        assert_eq!(decomposed, composed);
+
+        // Permitted decomposed input remains usable. GSUB may subsequently
+        // combine its glyphs; output glyphs are not restricted by codepoint.
+        let mut font = font_instance(ROBOTO);
+        font.unicode_range = Some(fontique::UnicodeRangeSet::new(&mut vec![
+            (0x65, 0x65),
+            (0x301, 0x301),
+        ]));
+        let shaped = all_glyphs(&shape_with_font_selector(
+            "e\u{301}",
+            SingleFont(font),
+            false,
+        ));
+        assert!(!shaped.is_empty());
+        assert!(shaped.iter().all(|glyph| glyph.id != 0));
+    }
+
+    #[test]
+    fn unicode_range_does_not_filter_ligature_output_glyphs() {
+        let mut font = font_instance(ROBOTO);
+        font.unicode_range = Some(fontique::UnicodeRangeSet::new(&mut vec![
+            (0x66, 0x66),
+            (0x69, 0x69),
+        ]));
+        let shaped = all_glyphs(&shape_with_font_selector("fi", SingleFont(font), false));
+        assert_eq!(shaped, all_glyphs(&shape_with_font("fi", ROBOTO)));
+        assert_eq!(shaped.len(), 1);
+    }
     /// A run can shape into no glyphs at all: `HarfRust` normally shapes `default-ignorable`
     /// characters (like a soft-hyphen) into a space glyph with zero advance, but if the space glyph
     /// is not available, it just deletes the character.

@@ -20,12 +20,19 @@ pub(crate) fn match_fonts(
         let font = &set[index];
         (font.width(), font.style(), font.weight())
     });
-    set.iter().enumerate().filter_map(move |(index, font)| {
-        let (best_width, best_style, best_weight) = best?;
-        // We need to return each font with the best attributes, as there might be multiple subsets.
-        (font.width() == best_width && font.style() == best_style && font.weight() == best_weight)
-            .then_some(index)
-    })
+    // Later registrations take precedence when the attribute match is equal,
+    // as with overlapping CSS @font-face unicode ranges.
+    set.iter()
+        .enumerate()
+        .rev()
+        .filter_map(move |(index, font)| {
+            let (best_width, best_style, best_weight) = best?;
+            // We need to return each font with the best attributes, as there might be multiple subsets.
+            (font.width() == best_width
+                && font.style() == best_style
+                && font.weight() == best_weight)
+                .then_some(index)
+        })
 }
 
 pub fn match_font(

@@ -1010,6 +1010,7 @@ mod tests {
         FontInstance {
             font: FontData::new(Blob::new(Arc::new(font_data)), 0),
             synthesis: Synthesis::default(),
+            unicode_range: None,
         }
     }
 

@@ -380,6 +380,7 @@ impl<'a, 'b, B: Brush> parley_engine::FontSelector for FontSelector<'a, 'b, B> {
                             index: font.index,
                         },
                         synthesis: font.synthesis,
+                        unicode_range: font.unicode_range,
                     });
                 } else {
                     self.last_resort_font = LastResortFont::Unavailable;
@@ -433,6 +434,7 @@ impl<'a, 'b, B: Brush> parley_engine::FontSelector for FontSelector<'a, 'b, B> {
             data: &font.blob,
             index: font.index,
             synthesis: &font.synthesis,
+            unicode_range: font.unicode_range.as_ref(),
         })
     }
 }

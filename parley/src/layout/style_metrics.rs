@@ -375,5 +375,6 @@ fn first_available_font<B: Brush>(
             index: font.index,
         },
         synthesis: font.synthesis,
+        unicode_range: font.unicode_range,
     })
 }

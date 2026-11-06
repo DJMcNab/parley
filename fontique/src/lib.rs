@@ -77,6 +77,7 @@ mod script;
 mod source;
 
 mod source_cache;
+mod unicode_range;
 
 pub use linebender_resource_handle::Blob;
 pub use script::ScriptExt;
@@ -90,6 +91,7 @@ pub use font::{AxisInfo, FontInfo, FontInfoOverride, Synthesis};
 pub use impl_fontconfig::FromFontconfig;
 pub use parlance::{FontStyle, FontWeight, FontWidth, GenericFamily, Language, Script};
 pub use source::{SourceId, SourceInfo, SourceKind};
+pub use unicode_range::UnicodeRangeSet;
 
 #[cfg(all(feature = "system", target_vendor = "apple"))]
 use objc2 as _;
