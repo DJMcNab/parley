@@ -3,6 +3,8 @@
 
 //! Shaping of text.
 
+use core::range::Range;
+
 use alloc::vec::Vec;
 use harfrust::ShapeOptions as HarfShapeOptions;
 use linebender_resource_handle::{Blob, FontData};
@@ -33,13 +35,26 @@ pub struct ShapeOptions<'a> {
     pub point_size: f32,
     /// The language to shape the item with.
     pub language: Option<Language>,
-    /// The font features to shape the item with.
-    ///
-    /// If there are font features with duplicate [tags][`FontFeature::tag`], later values override
-    /// earlier values.
-    pub features: &'a [FontFeature],
     /// The font variations that are constant over an item.
     pub variations: &'a [FontVariation],
+}
+
+/// A font feature applied to a range of characters.
+///
+/// Unlike [`ShapeOptions`], a change in font features does not require an [`Item`] boundary:
+/// features can start and end anywhere, and text on both sides of such a boundary is still shaped
+/// together (so, e.g., kerning still applies across the boundary if kerning is enabled on both
+/// sides).
+///
+/// A lookup of a feature is only applied if the feature is enabled on all the glyphs the lookup
+/// acts on. For example, a ligature is only formed if the ligature feature is enabled for all of
+/// its components.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RangedFeature {
+    /// The font feature.
+    pub feature: FontFeature,
+    /// The range of characters in the source text the feature applies to.
+    pub char_range: Range<u32>,
 }
 
 /// The font instance to shape an item with.
@@ -95,7 +110,15 @@ pub struct Shaper {
     shape_instance_cache: LruCache<cache::ShapeInstanceId, harfrust::Font>,
     shape_plan_cache: LruStore<(cache::ShapeDataKey, harfrust::ShapePlan)>,
     buffer: harfrust::Buffer,
+    /// The features of the run being shaped, with ranges relative to the run.
     features: Vec<harfrust::Feature>,
+    /// The features of the run being shaped, clipped to the run.
+    run_features: Vec<RangedFeature>,
+    /// The features that overlap the run being shaped or a later run, in the order they were
+    /// given.
+    active_features: Vec<RangedFeature>,
+    /// The index of the first feature that has not yet been added to `active_features`.
+    features_cursor: usize,
     char_cluster: CharCluster,
 }
 
@@ -108,6 +131,9 @@ impl Default for Shaper {
             shape_plan_cache: LruStore::new(MAX_ENTRIES),
             buffer: harfrust::Buffer::new(),
             features: Vec::new(),
+            run_features: Vec::new(),
+            active_features: Vec::new(),
+            features_cursor: 0,
             char_cluster: CharCluster::default(),
         }
     }
@@ -172,6 +198,13 @@ impl Shaper {
     /// Characters that don't have a particular script have their script resolved based on
     /// surrounding context (see [`Segment::script`]).
     ///
+    /// `features` are the font features to shape with. Their ranges can start and end anywhere in
+    /// the text, independent of `items`. They must be sorted by the start of their
+    /// [range][`RangedFeature::char_range`]. Where the ranges of features with the same
+    /// [tag][`FontFeature::tag`] overlap, the feature later in `features` takes precedence. Ranges
+    /// extending past the end of the text are clipped, and features with an empty range are
+    /// ignored.
+    ///
     /// Each segment is then broken into runs of maximal sequences of character clusters for which
     /// `select_font` returns the same font.
     ///
@@ -196,6 +229,7 @@ impl Shaper {
         // TODO: rename to something like `user_data` (s.t. we don't assume it's a style per se).
         char_style_indices: &[u16],
         items: impl IntoIterator<Item = Item<'options>>,
+        features: &[RangedFeature],
         mut select_font: impl FontSelector,
         produce_safe_to_concat_flags: bool,
         shaped_text: &mut ShapedText,
@@ -210,6 +244,13 @@ impl Shaper {
             char_count,
             "The number of character style indices must be equal to the character count"
         );
+
+        debug_assert!(
+            features.is_sorted_by_key(|feature| feature.char_range.start),
+            "`features` must be sorted by the start of their range"
+        );
+        self.active_features.clear();
+        self.features_cursor = 0;
 
         let mut previous_item_end = 0;
         let mut itemizer = analysis.itemize(text);
@@ -239,6 +280,7 @@ impl Shaper {
                     &segment,
                     is_item_start,
                     &item.options,
+                    features,
                     &mut select_font,
                     analysis.char_info(),
                     char_style_indices,
@@ -289,6 +331,7 @@ fn shape_segment(
     segment: &Segment,
     is_item_start: bool,
     options: &ShapeOptions<'_>,
+    features: &[RangedFeature],
     select_font: &mut impl FontSelector,
     char_info: &[CharInfo],
     char_style_indices: &[u16],
@@ -319,10 +362,42 @@ fn shape_segment(
     };
     let hb_script = script_to_harfrust(segment.script);
     let language = language_to_harfrust(options.language.as_ref());
-    features_to_harfrust(options.features, &mut scx.features);
 
     // Shape a run of the segment with a single font, appending it to `shaped_text`.
     let mut shape_run = |font: &FontInstance, range: TextRange| {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "Character indices fit in `u32`, as `Item::char_end` does."
+        )]
+        let run_chars = Range::from(range.char_range.start as u32..range.char_range.end as u32);
+
+        // Runs are shaped in logical order, so features ending before this run are not needed
+        // anymore, and features up to the end of this run become active.
+        scx.active_features
+            .retain(|feature| feature.char_range.end > run_chars.start);
+        while let Some(feature) = features.get(scx.features_cursor)
+            && feature.char_range.start < run_chars.end
+        {
+            scx.features_cursor += 1;
+            if feature.char_range.start < feature.char_range.end
+                && feature.char_range.end > run_chars.start
+            {
+                scx.active_features.push(*feature);
+            }
+        }
+
+        // Store source character ranges clipped to the run for later reshaping.
+        scx.run_features.clear();
+        scx.run_features
+            .extend(scx.active_features.iter().map(|feature| RangedFeature {
+                feature: feature.feature,
+                char_range: Range::from(
+                    feature.char_range.start.max(run_chars.start)
+                        ..feature.char_range.end.min(run_chars.end),
+                ),
+            }));
+        features_to_harfrust(&scx.run_features, run_chars, &mut scx.features);
+
         let face = cache::ShapeDataKey::new(font.font.data.id(), font.font.index);
         // Create harfrust font instance
         let base_font = scx.shape_data_cache.entry(face, || {
@@ -410,6 +485,7 @@ fn shape_segment(
             segment,
             is_item_start,
             options,
+            &scx.run_features,
             char_info,
             char_style_indices,
             font,
@@ -505,15 +581,37 @@ pub(crate) fn language_to_harfrust(language: Option<&Language>) -> Option<harfru
     language.and_then(|lang| lang.as_str().parse::<harfrust::Language>().ok())
 }
 
-pub(crate) fn features_to_harfrust(features: &[FontFeature], out: &mut Vec<harfrust::Feature>) {
+/// Clip features to the text being shaped, and translate source indices to buffer clusters.
+pub(crate) fn features_to_harfrust(
+    features: &[RangedFeature],
+    chars: Range<u32>,
+    out: &mut Vec<harfrust::Feature>,
+) {
     out.clear();
-    out.extend(features.iter().map(|feature| {
-        harfrust::Feature::new(
-            harfrust::Tag::new(&feature.tag.to_bytes()),
-            feature.value as u32,
-            ..,
-        )
-    }));
+    for feature in features {
+        let start = feature.char_range.start.max(chars.start);
+        let end = feature.char_range.end.min(chars.end);
+        if start >= end {
+            continue;
+        }
+
+        let tag = harfrust::Tag::new(&feature.feature.tag.to_bytes());
+        let value = u32::from(feature.feature.value);
+        if start == chars.start && end == chars.end {
+            // Applying a feature globally avoids per-glyph tracking. Remove earlier values for
+            // this tag, since HarfRust would otherwise still apply their ranges.
+            out.retain(|earlier| earlier.tag != tag);
+            out.push(harfrust::Feature::new(tag, value, ..));
+        } else {
+            // HarfRust 0.16's Feature::new subtracts one from an exclusive end.
+            out.push(harfrust::Feature {
+                tag,
+                value,
+                start: start - chars.start,
+                end: end - chars.start,
+            });
+        }
+    }
 }
 
 pub(crate) fn script_to_harfrust(script: parlance::Script) -> harfrust::Script {

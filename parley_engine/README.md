@@ -67,10 +67,10 @@ shaper.shape_text(
             font_size: 16.0,
             point_size: 16.0,
             language: None,
-            features: &[],
             variations: &[],
         },
      }],
+     &[], // No font features.
      select_font, // Selects fonts covering each cluster.
      false, // Don't produce safe-to-concat flags.
      &mut shaped_text,

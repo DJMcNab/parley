@@ -1021,7 +1021,6 @@ mod tests {
                 font_size: 32.0,
                 point_size: 32.0,
                 language: None,
-                features: &[],
                 variations: &[],
             },
         }];
@@ -1030,6 +1029,7 @@ mod tests {
             &analysis,
             &char_style_indices,
             items,
+            &[],
             SingleFont(font),
             false,
             &mut shaped,

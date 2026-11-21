@@ -287,6 +287,192 @@ fn style_features_ligatures_rtl_cluster_details() {
     env.check_layout_snapshot(&layout);
 }
 
+/// A font feature that doesn't affect the shaping of the letters used in the tests below. It's
+/// used to change font features in the middle of a word, without that in itself changing anything.
+const UNRELATED_FEATURE: FontFeature = FontFeature {
+    tag: Tag::new(b"tnum"),
+    value: 1,
+};
+
+/// The number of shaped runs on the first line of the layout.
+fn run_count(layout: &parley::Layout<ColorBrush>) -> usize {
+    layout.lines().next().unwrap().runs().count()
+}
+
+/// The number of glyphs of the layout.
+fn glyph_count(layout: &parley::Layout<ColorBrush>) -> usize {
+    layout
+        .lines()
+        .flat_map(|line| line.runs())
+        .flat_map(|run| run.clusters())
+        .map(|cluster| cluster.glyphs().count())
+        .sum()
+}
+
+/// A change in font features in the middle of a word doesn't break shaping: glyphs on both sides
+/// are still kerned.
+#[test]
+fn style_features_change_keeps_kerning() {
+    let mut env = TestEnv::new(test_name!(), None);
+    let text = "AVAVAV";
+
+    let mut plain = env.ranged_builder(text).build(text);
+    plain.break_all_lines(None);
+
+    let mut unkerned = {
+        let mut builder = env.ranged_builder(text);
+        builder.push_default(StyleProperty::FontFeatures(FontFeatures::List(
+            Cow::Borrowed(&[FontFeature {
+                tag: Tag::new(b"kern"),
+                value: 0,
+            }]),
+        )));
+        builder.build(text)
+    };
+    unkerned.break_all_lines(None);
+    assert!(
+        plain.full_width() < unkerned.full_width(),
+        "the text should be kerned for this test to be meaningful"
+    );
+
+    let mut builder = env.ranged_builder(text);
+    for v in [1, 3, 5] {
+        builder.push(
+            StyleProperty::FontFeatures(FontFeatures::List(Cow::Borrowed(&[UNRELATED_FEATURE]))),
+            v..v + 1,
+        );
+        builder.push(StyleProperty::Brush(ColorBrush::new(css::RED)), v..v + 1);
+    }
+    let mut layout = builder.build(text);
+    layout.break_all_lines(None);
+
+    assert_eq!(run_count(&layout), 1);
+    assert_eq!(layout.full_width(), plain.full_width());
+
+    env.check_layout_snapshot(&layout);
+}
+
+/// A ligature forms across a change in font features, as long as the ligature feature itself is
+/// enabled for all of its characters.
+#[test]
+fn style_features_change_keeps_ligature() {
+    let mut env = TestEnv::new(test_name!(), None);
+    let text = "fi";
+
+    let mut builder = env.ranged_builder(text);
+    builder.push(
+        StyleProperty::FontFeatures(FontFeatures::List(Cow::Borrowed(&[UNRELATED_FEATURE]))),
+        1..2,
+    );
+    builder.push(StyleProperty::Brush(ColorBrush::new(css::RED)), 1..2);
+    let mut layout = builder.build(text);
+    layout.break_all_lines(None);
+
+    assert_eq!(run_count(&layout), 1);
+    assert_eq!(glyph_count(&layout), 1);
+
+    env.check_layout_snapshot(&layout);
+}
+
+/// A ligature doesn't form if the ligature feature is disabled for some of its characters.
+#[test]
+fn style_features_ligatures_off_for_part_of_ligature() {
+    let mut env = TestEnv::new(test_name!(), None);
+    let text = "fi";
+
+    let mut builder = env.ranged_builder(text);
+    builder.push(
+        StyleProperty::FontFeatures(FontFeatures::List(Cow::Borrowed(&[FontFeature {
+            tag: Tag::new(b"liga"),
+            value: 0,
+        }]))),
+        1..2,
+    );
+    builder.push(StyleProperty::Brush(ColorBrush::new(css::RED)), 1..2);
+    let mut layout = builder.build(text);
+    layout.break_all_lines(None);
+
+    assert_eq!(run_count(&layout), 1);
+    assert_eq!(glyph_count(&layout), 2);
+
+    env.check_layout_snapshot(&layout);
+}
+
+/// A font feature applies to exactly the characters it's set on, also if those characters are in
+/// the middle of a run.
+#[test]
+fn style_features_ligatures_on_for_range() {
+    let mut env = TestEnv::new(test_name!(), None);
+    let text = "fi fi fi";
+
+    let mut builder = env.ranged_builder(text);
+    builder.push_default(StyleProperty::FontFeatures(FontFeatures::List(
+        Cow::Borrowed(&[FontFeature {
+            tag: Tag::new(b"liga"),
+            value: 0,
+        }]),
+    )));
+    // Only the middle "fi" has ligatures enabled.
+    builder.push(
+        StyleProperty::FontFeatures(FontFeatures::List(Cow::Borrowed(&[FontFeature {
+            tag: Tag::new(b"liga"),
+            value: 1,
+        }]))),
+        3..5,
+    );
+    builder.push(StyleProperty::Brush(ColorBrush::new(css::RED)), 3..5);
+    let mut layout = builder.build(text);
+    layout.break_all_lines(None);
+
+    assert_eq!(run_count(&layout), 1);
+    // Two glyphs for the first and last "fi", one for the middle "fi", and two spaces.
+    assert_eq!(glyph_count(&layout), 7);
+
+    env.check_layout_snapshot(&layout);
+}
+
+/// The range of a font feature can span across runs of different fonts, and can start or end in
+/// the middle of a run that isn't the first run of the text.
+#[test]
+fn style_features_change_across_font_fallback() {
+    let mut env = TestEnv::new(test_name!(), None);
+    // The Arabic is shaped with a different font than the Latin text following it.
+    let text = "fi مرحبا fi fi";
+    let last_fi = text.len() - 2..text.len();
+
+    let mut builder = env.ranged_builder(text);
+    // Disable ligatures from the "i" of the first "fi", through the Arabic, up to the last "fi".
+    builder.push(
+        StyleProperty::FontFeatures(FontFeatures::List(Cow::Borrowed(&[FontFeature {
+            tag: Tag::new(b"liga"),
+            value: 0,
+        }]))),
+        1..last_fi.start,
+    );
+    builder.push(
+        StyleProperty::Brush(ColorBrush::new(css::RED)),
+        1..last_fi.start,
+    );
+    let mut layout = builder.build(text);
+    layout.break_all_lines(None);
+
+    let last_fi_glyphs: usize = layout
+        .lines()
+        .flat_map(|line| line.runs())
+        .flat_map(|run| run.clusters())
+        .filter(|cluster| cluster.text_range().start >= last_fi.start)
+        .map(|cluster| cluster.glyphs().count())
+        .sum();
+    assert_eq!(last_fi_glyphs, 1, "the last \"fi\" should be a ligature");
+
+    let mut plain = env.ranged_builder(text).build(text);
+    plain.break_all_lines(None);
+    // Compared to shaping without the feature, the first two "fi" are not ligatures.
+    assert_eq!(glyph_count(&layout), glyph_count(&plain) + 2);
+
+    env.check_layout_snapshot(&layout);
+}
+
 // ============================================================================
 // Locale Tests
 // ============================================================================

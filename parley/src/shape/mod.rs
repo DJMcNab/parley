@@ -4,10 +4,11 @@
 //! Text shaping implementation using `harfrust`for shaping
 //! and `icu` for text analysis.
 
+use core::range::Range;
+
 use alloc::vec::Vec;
 use parley_engine::shape::{CharCluster, Coverage};
-use parley_engine::{Analysis, FontInstance, FontInstanceRef, ShapeOptions, Shaper};
-use smallvec::SmallVec;
+use parley_engine::{Analysis, FontInstance, FontInstanceRef, RangedFeature, ShapeOptions, Shaper};
 
 use super::layout::Layout;
 use super::resolve::{ResolveContext, ResolvedStyle};
@@ -52,7 +53,7 @@ pub(crate) fn shape_text<'a, B: Brush>(
     scx: &mut Shaper,
     text: &str,
     layout: &mut Layout<B>,
-    style_features: &'a mut Vec<SmallVec<[FontFeature; 8]>>,
+    ranged_features: &mut Vec<RangedFeature>,
 ) {
     let scale = layout.data.scale;
 
@@ -65,29 +66,42 @@ pub(crate) fn shape_text<'a, B: Brush>(
 
     let mut floated_box_iter = floated_boxes.iter().peekable();
 
-    // Merge font features with letter-spacing ligature suppression.
+    // Collect the font features of each span of characters, including the ligature suppression of
+    // letter spacing.
     //
-    // TODO: This copy is slightly unfortunate (though solvable). It's required currently,
-    // because the iterator providing `ShapeOptions` has to provide a borrowed `&'a [FontFeature]`,
-    // which cannot be tied to the lifetime of the call to `Iterator::next`. What we'd need is a
-    // lending iterator (i.e., we probably just need to let `parley_engine` take some trait
-    // providing the items).
-    style_features.clear();
-    style_features.extend(styles.iter().map(|style| {
-        let style_features = rcx.features(style.font_features).unwrap_or(&[]);
-        if !nearly_zero(style.letter_spacing) {
-            // Later values override earlier values.
-            OPTIONAL_LIGATURES_OFF
-                .into_iter()
-                .chain(style_features.iter().copied())
-                .collect()
-        } else {
-            style_features.iter().copied().collect()
+    // Adjacent styles often only differ in properties that are irrelevant here (like the brush).
+    // Spans of such styles are merged, so that features are usually constant over a shaped run.
+    ranged_features.clear();
+    let mut span_start = 0_usize;
+    for span in char_style_indices.chunk_by(|&a, &b| {
+        a == b || {
+            let (a, b) = (&styles[usize::from(a)], &styles[usize::from(b)]);
+            a.font_features == b.font_features
+                && nearly_zero(a.letter_spacing) == nearly_zero(b.letter_spacing)
         }
-    }));
-    let style_features = &*style_features;
+    }) {
+        let span_end = span_start + span.len();
+        let char_range = Range::from(span_start as u32..span_end as u32);
+        span_start = span_end;
 
-    // Split when shaping-relevant style properties change and at floated boxes.
+        let style = &styles[usize::from(span[0])];
+        let ligatures_off: &[FontFeature] = if nearly_zero(style.letter_spacing) {
+            &[]
+        } else {
+            &OPTIONAL_LIGATURES_OFF
+        };
+        let style_features = rcx.features(style.font_features).unwrap_or(&[]);
+        // Later features override earlier features.
+        ranged_features.extend(ligatures_off.iter().chain(style_features).map(|&feature| {
+            RangedFeature {
+                feature,
+                char_range,
+            }
+        }));
+    }
+
+    // Split when shaping-relevant style properties change and at floated boxes. Font features are
+    // not among these: they can change within an item.
     let items = {
         // TODO: we currently walk characters here, but we could instead just walk boundaries of
         // styles, explicit splits, and floated boxes.
@@ -147,7 +161,6 @@ pub(crate) fn shape_text<'a, B: Brush>(
                     split = !nearly_eq(style.font_size, item_style.font_size)
                         || style.locale != item_style.locale
                         || style.font_variations != item_style.font_variations
-                        || style.font_features != item_style.font_features
                         || !nearly_eq(style.letter_spacing, item_style.letter_spacing)
                         || !nearly_eq(style.word_spacing, item_style.word_spacing);
                 }
@@ -168,7 +181,6 @@ pub(crate) fn shape_text<'a, B: Brush>(
                     // TODO: Keep the logical font size in `ResolvedStyle` instead of
                     // dividing the scale back out.
                     point_size: item_style.font_size / scale,
-                    features: &style_features[item_style_index as usize],
                     variations: rcx.variations(item_style.font_variations).unwrap_or(&[]),
                 },
             })
@@ -182,6 +194,7 @@ pub(crate) fn shape_text<'a, B: Brush>(
         analysis,
         char_style_indices,
         items,
+        ranged_features,
         font_selector,
         false,
         &mut layout.data.shaped_text,
