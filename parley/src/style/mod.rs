@@ -23,6 +23,10 @@ pub use fontique::Language;
 pub use parlance::{LineBreak, OverflowWrap, TextWrapMode, WordBreak};
 pub use styleset::StyleSet;
 
+pub use crate::text_spacing_trim::{
+    TextSpacingTrim, TextSpacingTrimAdjacent, TextSpacingTrimEnd, TextSpacingTrimStart,
+};
+
 use crate::util::nearly_eq;
 
 /// Whitespace collapsing and hanging behavior.
@@ -302,6 +306,8 @@ pub enum StyleProperty<'a, B: Brush> {
     WhiteSpaceCollapse(WhiteSpaceCollapse),
     /// The character that collapsible whitespace collapses to.
     CollapsedSpace(CollapsedSpace),
+    /// Where fullwidth punctuation is set half-width.
+    TextSpacingTrim(TextSpacingTrim),
 }
 
 /// Unresolved styles.
@@ -361,6 +367,8 @@ pub struct TextStyle<'family, 'settings, B: Brush> {
     pub white_space_collapse: WhiteSpaceCollapse,
     /// The character that collapsible whitespace collapses to.
     pub collapsed_space: CollapsedSpace,
+    /// Where fullwidth punctuation is set half-width.
+    pub text_spacing_trim: TextSpacingTrim,
 }
 
 impl<B: Brush> Default for TextStyle<'static, 'static, B> {
@@ -393,6 +401,7 @@ impl<B: Brush> Default for TextStyle<'static, 'static, B> {
             text_wrap_mode: TextWrapMode::default(),
             white_space_collapse: WhiteSpaceCollapse::default(),
             collapsed_space: CollapsedSpace::default(),
+            text_spacing_trim: TextSpacingTrim::default(),
         }
     }
 }
@@ -478,6 +487,12 @@ impl<B: Brush> From<LineBreak> for StyleProperty<'_, B> {
 impl<B: Brush> From<OverflowWrap> for StyleProperty<'_, B> {
     fn from(value: OverflowWrap) -> Self {
         StyleProperty::OverflowWrap(value)
+    }
+}
+
+impl<B: Brush> From<TextSpacingTrim> for StyleProperty<'_, B> {
+    fn from(value: TextSpacingTrim) -> Self {
+        StyleProperty::TextSpacingTrim(value)
     }
 }
 

@@ -17,7 +17,7 @@ use crate::{
     shape::{
         ShapedCluster, cache,
         shaped_text::push_glyph_buffer,
-        shaper::{features_to_harfrust, language_to_harfrust, script_to_harfrust},
+        shaper::{RangedFeature, features_to_harfrust, language_to_harfrust, script_to_harfrust},
     },
 };
 
@@ -163,7 +163,7 @@ impl ReshapedText {
 #[derive(Clone, Copy, Debug)]
 pub struct LineStart<'a> {
     line_start_char: u32,
-    start_edit: Option<Edit<'a>>,
+    request: EdgeRequest<'a>,
     /// The reshaped fragment starting the line, if the start needed reshaping.
     start_fragment: Option<Fragment>,
     /// The start of the range of shaped clusters this reshaped line takes from the paragraph-wide
@@ -186,7 +186,7 @@ impl LineStart<'_> {
 #[derive(Clone, Copy, Debug)]
 pub struct LineEnd<'a> {
     line_end_char: u32,
-    end_edit: Option<Edit<'a>>,
+    request: EdgeRequest<'a>,
     /// The reshaped fragment ending the line, if the end needed reshaping.
     end_fragment: Option<Fragment>,
     /// The end of the range of shaped clusters this reshaped line takes from the paragraph-wide
@@ -348,14 +348,15 @@ impl FragmentCache {
     const STARTS: usize = 0;
     const ENDS: usize = 1;
 
-    /// The slot holding the fragment shaped from `chars` with `edits`, if any.
-    fn find(&self, chars: (u32, u32), edits: [Option<Edit<'_>>; 2]) -> Option<usize> {
+    /// The slot holding the fragment shaped from `chars` with `requests`, if any.
+    fn find(&self, chars: (u32, u32), requests: [EdgeRequest<'_>; 2]) -> Option<usize> {
         self.slots.iter().position(|slot| {
             slot.chars == Some(chars)
-                && (slot.edits.iter().zip(edits)).all(|((replaced, inserted), edit)| {
-                    *replaced == edit.map(Edit::replaced_chars)
-                        && inserted == edit.map_or("", |edit| edit.inserted)
+                && (slot.edits.iter().zip(requests)).all(|((replaced, inserted), request)| {
+                    *replaced == request.edit.map(Edit::replaced_chars)
+                        && inserted == request.edit.map_or("", |edit| edit.inserted)
                 })
+                && (slot.features.iter()).eq(requests.iter().map(|request| request.features))
         })
     }
 }
@@ -366,6 +367,8 @@ struct CachedFragment {
     chars: Option<(u32, u32)>,
     /// The replaced character count and inserted text of the edits `fragment` was shaped with.
     edits: [(Option<u32>, String); 2],
+    /// The features of the requests `fragment` was shaped with.
+    features: [Vec<RangedFeature>; 2],
     /// The fragment, as the only run.
     fragment: ReshapedText,
 }
@@ -463,7 +466,7 @@ impl Reshaper {
     }
 
     /// Measure the effect of starting a line at character index `line_start_char` with the given
-    /// `edit`.
+    /// `request`.
     ///
     /// This also returns the reshaped clusters starting the line, or `None` if the line's start
     /// needed no reshaping. Note this slice's shaped cluster indices index only into this slice
@@ -471,21 +474,29 @@ impl Reshaper {
     ///
     /// # Panics
     ///
-    /// Panics if `edit` replaces characters past the end of the [`ShapedRun`] at the line's edge.
+    /// Panics if `request`'s edit replaces characters past the end of the [`ShapedRun`] at the
+    /// line's edge.
     #[inline]
     pub fn measure_start<'a, 'e>(
         &'a mut self,
         text: &str,
         shaped: &'a ShapedText,
         line_start_char: u32,
-        edit: Option<Edit<'e>>,
+        request: EdgeRequest<'e>,
     ) -> (LineStart<'e>, Option<ShapedSlice<'a>>) {
         let start = self
-            .reshape_line_start(text, shaped, line_start_char, edit, SpliceMode::Fast, None)
+            .reshape_line_start(
+                text,
+                shaped,
+                line_start_char,
+                request,
+                SpliceMode::Fast,
+                None,
+            )
             .unwrap();
         let cache = &self.cache;
         let slice = start.start_fragment.map(|fragment| {
-            let slot = (cache.find(fragment.chars, [edit, None]))
+            let slot = (cache.find(fragment.chars, [request, EdgeRequest::default()]))
                 .expect("measuring the start just reshaped its fragment");
             cache.slots[slot].fragment.run_slice(shaped, 0)
         });
@@ -493,21 +504,21 @@ impl Reshaper {
     }
 
     /// Measure the effect of ending a line at character index `line_end_char` with the given
-    /// `edit`.
+    /// `request`.
     ///
     /// # Panics
     ///
-    /// Panics if `edit` replaces characters before the start of the [`ShapedRun`] at the line's
-    /// edge.
+    /// Panics if `request`'s edit replaces characters before the start of the [`ShapedRun`] at the
+    /// line's edge.
     #[inline]
     pub fn measure_end<'e>(
         &mut self,
         text: &str,
         shaped: &ShapedText,
         line_end_char: u32,
-        edit: Option<Edit<'e>>,
+        request: EdgeRequest<'e>,
     ) -> LineEnd<'e> {
-        self.reshape_line_end(text, shaped, line_end_char, edit, SpliceMode::Fast, None)
+        self.reshape_line_end(text, shaped, line_end_char, request, SpliceMode::Fast, None)
             .expect("an unbounded line end can't overlap a line start")
     }
 
@@ -516,8 +527,8 @@ impl Reshaper {
     /// Store the resulting line using [`Self::push_line`].
     ///
     /// `end` must not be before `start`. If the line is so short that its reshaped start and end
-    /// overlap, the whole line is reshaped as one piece. An empty line drops the edits, as it has
-    /// no characters for inserted text to attach to.
+    /// overlap, the whole line is reshaped as one piece. An empty line drops the requests, as it
+    /// has no characters to change or for inserted text to attach to.
     ///
     /// The line is not necessarily [exact](Self#exactness).
     ///
@@ -605,7 +616,7 @@ impl Reshaper {
                 text,
                 shaped,
                 end.line_end_char,
-                end.end_edit,
+                end.request,
                 SpliceMode::Exact,
                 Some(&start),
             ) {
@@ -619,7 +630,7 @@ impl Reshaper {
                 text,
                 shaped,
                 start.line_start_char,
-                start.start_edit,
+                start.request,
                 SpliceMode::Exact,
                 Some(&line.end),
             ) {
@@ -660,7 +671,7 @@ impl Reshaper {
         }
     }
 
-    /// Reshape the start of a line at `line_start_char` with the given `edit`.
+    /// Reshape the start of a line at `line_start_char` with the given `request`.
     ///
     /// With a `line_end`, returns `None` if the reshaped start and end would overlap.
     #[expect(clippy::cast_possible_truncation, reason = "Deferred")]
@@ -669,13 +680,14 @@ impl Reshaper {
         text: &str,
         shaped: &ShapedText,
         line_start_char: u32,
-        edit: Option<Edit<'e>>,
+        request: EdgeRequest<'e>,
         splice: SpliceMode,
         line_end: Option<&LineEnd<'_>>,
     ) -> Option<LineStart<'e>> {
+        let EdgeRequest { edit, features } = request;
         let mut line_start = LineStart {
             line_start_char,
-            start_edit: edit,
+            request,
             start_fragment: None,
             source_clusters_start: shaped
                 .shaped_clusters()
@@ -727,6 +739,13 @@ impl Reshaper {
                     cluster.chars_range().start <= line_start_char + edit.replaced_chars()
                 }),
             };
+        // The fragment covers the clusters whose features change, even those that breaking the
+        // line leaves alone. The splice point is then found beyond them as usual.
+        if let Some(changed_end) = features.iter().map(|f| f.char_range.end).max() {
+            let changed =
+                run_clusters.partition_point(|cluster| cluster.chars_range().start < changed_end);
+            splice_cluster = splice_cluster.max(run_start_cluster + changed);
+        }
 
         // With no `edit`, no reshaping is necessary when at a cluster that is safe to break before.
         if edit.is_none()
@@ -740,6 +759,7 @@ impl Reshaper {
             splice_cluster += 1;
         }
 
+        let requests = [request, EdgeRequest::default()];
         let advance = loop {
             if splice == SpliceMode::Fast || splice_cluster == run_end_cluster {
                 if splice_cluster > max_splice_cluster {
@@ -751,7 +771,7 @@ impl Reshaper {
                 };
                 line_start.start_fragment = Some(fragment);
                 break self
-                    .shape(text, shaped, FragmentCache::STARTS, fragment, [edit, None])
+                    .shape(text, shaped, FragmentCache::STARTS, fragment, requests)
                     .1;
             }
 
@@ -774,7 +794,7 @@ impl Reshaper {
                 ),
             };
             let (slot, advance) =
-                self.shape(text, shaped, FragmentCache::STARTS, fragment, [edit, None]);
+                self.shape(text, shaped, FragmentCache::STARTS, fragment, requests);
             let fragment_clusters = self.cache.slots[slot]
                 .fragment
                 .run_slice(shaped, 0)
@@ -808,7 +828,7 @@ impl Reshaper {
         Some(line_start)
     }
 
-    /// Reshape the end of a line at `line_end_char` with the given `edit`.
+    /// Reshape the end of a line at `line_end_char` with the given `request`.
     ///
     /// With a `line_start`, returns `None` if the reshaped start and end would overlap.
     #[expect(clippy::cast_possible_truncation, reason = "Deferred")]
@@ -817,17 +837,18 @@ impl Reshaper {
         text: &str,
         shaped: &ShapedText,
         line_end_char: u32,
-        edit: Option<Edit<'e>>,
+        request: EdgeRequest<'e>,
         splice: SpliceMode,
         line_start: Option<&LineStart<'_>>,
     ) -> Option<LineEnd<'e>> {
+        let EdgeRequest { edit, features } = request;
         let source_clusters_end = shaped
             .shaped_clusters()
             .partition_point(|cluster| cluster.chars_range().start < line_end_char)
             as u32;
         let mut line_end = LineEnd {
             line_end_char,
-            end_edit: edit,
+            request,
             end_fragment: None,
             source_clusters_end,
             advance_delta: 0.,
@@ -883,6 +904,13 @@ impl Reshaper {
                     })
                     .saturating_sub(1),
             };
+        // The fragment covers the clusters whose features change, even those that breaking the
+        // line leaves alone. The splice point is then found beyond them as usual.
+        if let Some(changed_start) = features.iter().map(|f| f.char_range.start).min() {
+            let changed =
+                run_clusters.partition_point(|cluster| cluster.chars_range().end <= changed_start);
+            splice_cluster = splice_cluster.min(run_start_cluster + changed);
+        }
 
         // With no `edit`, the line end needs no reshaping when at a cluster that is safe to break
         // before.
@@ -907,8 +935,8 @@ impl Reshaper {
                 run: run_index as u32,
                 chars: (first_char_idx_of_cluster(splice_cluster), line_end_char),
             };
-            let (slot, advance) =
-                self.shape(text, shaped, FragmentCache::ENDS, fragment, [None, edit]);
+            let requests = [EdgeRequest::default(), request];
+            let (slot, advance) = self.shape(text, shaped, FragmentCache::ENDS, fragment, requests);
 
             let reshaped = &self.cache.slots[slot].fragment;
             let first_cluster = reshaped.runs[0].run.shaped_clusters_range.start;
@@ -968,7 +996,7 @@ impl Reshaper {
             shaped,
             FragmentCache::ENDS,
             fragment,
-            [start.start_edit, end.end_edit],
+            [start.request, end.request],
         );
         let source_advance: f32 = shaped.shaped_clusters()
             [line_start_cluster..source_clusters_end as usize]
@@ -1001,12 +1029,13 @@ impl Reshaper {
         fragment: Fragment,
         reshaped: &mut ReshapedText,
     ) -> u32 {
-        // A fragment is shaped with the edits of the line's edges it touches.
-        let edits = [
-            (line.start.start_edit).filter(|_| fragment.chars.0 == line.start.line_start_char),
-            (line.end.end_edit).filter(|_| fragment.chars.1 == line.end.line_end_char),
-        ];
-        match self.cache.find(fragment.chars, edits) {
+        // A fragment is shaped with the requests of the line's edges it touches.
+        let requests = [
+            (fragment.chars.0 == line.start.line_start_char).then_some(line.start.request),
+            (fragment.chars.1 == line.end.line_end_char).then_some(line.end.request),
+        ]
+        .map(Option::unwrap_or_default);
+        match self.cache.find(fragment.chars, requests) {
             Some(slot) => {
                 let cached = &self.cache.slots[slot].fragment;
                 debug_assert_eq!(cached.runs.len(), 1, "a cache slot holds one fragment");
@@ -1017,14 +1046,13 @@ impl Reshaper {
                 shaped,
                 fragment.run,
                 fragment.chars.0..fragment.chars.1,
-                edits[0],
-                edits[1],
+                requests,
                 reshaped,
             ),
         }
     }
 
-    /// Reshape `fragment` with `edits` into one of the cache slots of `pair`, unless the cache
+    /// Reshape `fragment` with `requests` into one of the cache slots of `pair`, unless the cache
     /// already holds it.
     ///
     /// Returns the slot and the fragment's advance.
@@ -1034,9 +1062,9 @@ impl Reshaper {
         shaped: &ShapedText,
         pair: usize,
         fragment: Fragment,
-        edits: [Option<Edit<'_>>; 2],
+        requests: [EdgeRequest<'_>; 2],
     ) -> (usize, f32) {
-        let slot = match self.cache.find(fragment.chars, edits) {
+        let slot = match self.cache.find(fragment.chars, requests) {
             Some(slot) => slot,
             None => {
                 // Take the slot of the pair that wasn't used last.
@@ -1048,17 +1076,20 @@ impl Reshaper {
                     shaped,
                     fragment.run,
                     fragment.chars.0..fragment.chars.1,
-                    edits[0],
-                    edits[1],
+                    requests,
                     &mut reshaped_fragment,
                 );
                 let cached = &mut self.cache.slots[slot];
                 cached.fragment = reshaped_fragment;
                 cached.chars = Some(fragment.chars);
-                for ((replaced, inserted), edit) in cached.edits.iter_mut().zip(edits) {
-                    *replaced = edit.map(Edit::replaced_chars);
+                for ((replaced, inserted), request) in cached.edits.iter_mut().zip(requests) {
+                    *replaced = request.edit.map(Edit::replaced_chars);
                     inserted.clear();
-                    inserted.push_str(edit.map_or("", |edit| edit.inserted));
+                    inserted.push_str(request.edit.map_or("", |edit| edit.inserted));
+                }
+                for (features, request) in cached.features.iter_mut().zip(requests) {
+                    features.clear();
+                    features.extend_from_slice(request.features);
                 }
                 slot
             }
@@ -1072,7 +1103,7 @@ impl Reshaper {
     ///
     /// Returns the new run's index in [`ReshapedText::runs`].
     ///
-    /// `start_edit` and `end_edit` edit the first and last characters of `chars`.
+    /// `start` and `end` are the requests for the first and last characters of `chars`.
     #[expect(clippy::cast_possible_truncation, reason = "Deferred")]
     fn reshape(
         &mut self,
@@ -1080,10 +1111,10 @@ impl Reshaper {
         shaped: &ShapedText,
         run_index: u32,
         chars: Range<u32>,
-        start_edit: Option<Edit<'_>>,
-        end_edit: Option<Edit<'_>>,
+        [start, end]: [EdgeRequest<'_>; 2],
         reshaped: &mut ReshapedText,
     ) -> u32 {
+        let (start_edit, end_edit) = (start.edit, end.edit);
         let run = &shaped.runs()[run_index as usize];
         let char_count = chars.len() as u32;
 
@@ -1123,7 +1154,8 @@ impl Reshaper {
         self.buffer.set_pre_context(&text[..bytes.start]);
         self.buffer.set_post_context(&text[bytes.end..]);
 
-        let font_unit_scale = self.shape_like_run(shaped, run, chars.clone().into());
+        let overrides = start.features.iter().chain(end.features);
+        let font_unit_scale = self.shape_like_run(shaped, run, chars.clone().into(), overrides);
         let (shaped_clusters_range, glyphs_range) = push_glyph_buffer(
             &mut reshaped.shaped_clusters,
             &mut reshaped.glyphs,
@@ -1155,14 +1187,18 @@ impl Reshaper {
     /// Shape `self.buffer` in-place with the font, normalized coordinates, direction, script,
     /// language, features and font size, that `run` of `shaped` was shaped with.
     ///
+    /// `overrides` are features to shape with in addition, which take precedence over the run's
+    /// features with the same tag.
+    ///
     /// The buffer's characters and pre/post context must already be set.
     ///
     /// Returns the font unit scale.
-    fn shape_like_run(
+    fn shape_like_run<'f>(
         &mut self,
-        shaped: &ShapedText,
+        shaped: &'f ShapedText,
         run: &ShapedRun,
         chars: core::range::Range<u32>,
+        overrides: impl Iterator<Item = &'f RangedFeature>,
     ) -> f32 {
         let font = &shaped.fonts()[run.font_index];
         let face = cache::ShapeDataKey::new(font.font.data.id(), font.font.index);
@@ -1189,7 +1225,9 @@ impl Reshaper {
         let hb_script = script_to_harfrust(run.script);
         let language = language_to_harfrust(run.language.as_ref());
         features_to_harfrust(
-            &shaped.features()[run.features_range],
+            shaped.features()[run.features_range]
+                .iter()
+                .chain(overrides),
             chars,
             &mut self.features,
         );
@@ -1233,6 +1271,24 @@ impl Reshaper {
         .expect("buffer direction and script match the shape plan");
         run.font_size / instance.units_per_em() as f32
     }
+}
+
+/// What to change at one edge of a line when reshaping it.
+///
+/// The default request changes nothing, and reshapes only as far as breaking the line requires.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct EdgeRequest<'a> {
+    /// The text to replace at the edge.
+    pub edit: Option<Edit<'a>>,
+    /// Font features to shape with in addition to those the source text was shaped with.
+    ///
+    /// As in [`Shaper::shape_text`](crate::Shaper::shape_text), their ranges are of characters in
+    /// the source text, and a feature takes precedence over earlier features with the same tag,
+    /// which here includes all features of the source text. Unlike an [`Edit`], these are not
+    /// restricted to the characters directly at the edge: the characters between the edge and
+    /// the features are reshaped too. Only the parts of the ranges that are both on the line and
+    /// in the [`ShapedRun`] at the edge have an effect.
+    pub features: &'a [RangedFeature],
 }
 
 /// An edit made to one edge of a line.
@@ -1298,7 +1354,7 @@ impl<'a> Edit<'a> {
 mod tests {
     use alloc::vec::Vec;
 
-    use super::{Edit, Range, ReshapedLine, ReshapedText, Reshaper};
+    use super::{EdgeRequest, Edit, Range, ReshapedLine, ReshapedText, Reshaper};
     use crate::{Glyph, RangedFeature, ShapedSlice, ShapedText, shape::shaped_text::tests::*};
     use parlance::{FontFeature, Tag};
 
@@ -1341,7 +1397,11 @@ mod tests {
             if a < b {
                 let start = start_edit.filter(|_| a == chars.start);
                 let end = end_edit.filter(|_| b == chars.end);
-                let run = reshaper.reshape(text, shaped, i, a..b, start, end, &mut out);
+                let requests = [start, end].map(|edit| EdgeRequest {
+                    edit,
+                    features: &[],
+                });
+                let run = reshaper.reshape(text, shaped, i, a..b, requests, &mut out);
                 result.extend(clusters(out.run_slice(shaped, run)));
             }
         }
@@ -1411,8 +1471,11 @@ mod tests {
                             continue;
                         }
                         let whole = reshape_whole(text, &shaped, p..q, equivalent_edits);
-                        let (start, start_slice) =
-                            reshaper.measure_start(text, &shaped, p, edits[0]);
+                        let [start, end] = edits.map(|edit| EdgeRequest {
+                            edit,
+                            features: &[],
+                        });
+                        let (start, start_slice) = reshaper.measure_start(text, &shaped, p, start);
                         let splice = (shaped.shaped_clusters())
                             .get(start.source_clusters_start as usize)
                             .map_or(len, |c| c.chars_range().start);
@@ -1422,7 +1485,7 @@ mod tests {
                             let whole = reshape_whole(text, &shaped, slice.char_range(), edits);
                             assert_eq!(clusters(slice).collect::<Vec<_>>(), whole);
                         }
-                        let end = reshaper.measure_end(text, &shaped, q, edits[1]);
+                        let end = reshaper.measure_end(text, &shaped, q, end);
                         let fast = reshaper.line(text, &shaped, &start, &end);
                         for (line, exact) in [
                             (fast, false),
@@ -1447,5 +1510,68 @@ mod tests {
             fast_misses > 0,
             "We expect some misses for the 'fast' reshaping, so that we're actually exercising `make_exact`"
         );
+    }
+
+    /// Feature overrides must give the line that shaping with those features would have, whether
+    /// or not breaking the line needed reshaping, and must not be confused with other requests
+    /// for the same characters.
+    #[test]
+    fn reshaped_lines_with_feature_overrides() {
+        let text = "office AVA";
+        let font = || SingleFont(font_instance(ROBOTO));
+        let shaped = shape_with_font_selector(text, font(), &[], true);
+        let len = u32::try_from(text.len()).unwrap();
+        let off = |tag, chars: Range<u32>| RangedFeature {
+            feature: FontFeature::new(Tag::new(tag), 0),
+            char_range: chars.into(),
+        };
+
+        let (mut reshaper, mut out) = (Reshaper::default(), ReshapedText::new());
+        for p in 0..len {
+            for q in p + 1..=len {
+                // These break up "ffi" and unkern "AVA", also from inside the reshaped fragments.
+                let features = [
+                    [off(b"liga", p..(p + 3).min(q))],
+                    [off(b"kern", q.saturating_sub(3).max(p)..q)],
+                ];
+                let shaped_with_features =
+                    shape_with_font_selector(text, font(), &features.concat(), true);
+                let source: f32 = (shaped.shaped_clusters().iter())
+                    .filter(|c| (p..q).contains(&c.chars_range().start))
+                    .map(|c| c.advance)
+                    .sum();
+
+                let edits = [Some(Edit::new(0, "s")), Some(Edit::new(0, "-"))];
+                for (edits, features) in [
+                    ([None; 2], None),
+                    ([None; 2], Some(&features)),
+                    (edits, None),
+                    (edits, Some(&features)),
+                ] {
+                    let expected = features.map_or(&shaped, |_| &shaped_with_features);
+                    let whole = reshape_whole(text, expected, p..q, edits);
+                    let [start, end] = [0, 1].map(|edge| EdgeRequest {
+                        edit: edits[edge],
+                        features: features.map_or(&[], |features| &features[edge]),
+                    });
+                    let (start, _) = reshaper.measure_start(text, &shaped, p, start);
+                    let end = reshaper.measure_end(text, &shaped, q, end);
+                    let fast = reshaper.line(text, &shaped, &start, &end);
+                    // Making the line exact evicts fragments of the fast line from the cache.
+                    for (line, exact) in [
+                        (fast, false),
+                        (reshaper.make_exact(text, &shaped, fast), true),
+                    ] {
+                        let pushed = reshaper.push_line(text, &shaped, &line, &mut out);
+                        let clusters = line_clusters(&shaped, &out, pushed);
+                        let advance: f32 = clusters.iter().map(|c| c.1).sum();
+                        assert!((advance - source - line.advance_delta()).abs() < 1e-3);
+                        if exact {
+                            assert_eq!(clusters, whole, "{p}..{q} {edits:?} {features:?}");
+                        }
+                    }
+                }
+            }
+        }
     }
 }

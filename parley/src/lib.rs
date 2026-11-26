@@ -140,6 +140,7 @@ mod font;
 mod inline_box;
 mod resolve;
 mod shape;
+mod text_spacing_trim;
 mod util;
 
 pub mod editing;

@@ -14,7 +14,7 @@ pub(crate) mod shaper;
 pub use cluster::{Char, CharCluster, Coverage, SourceRange, Whitespace};
 pub use data::{Character, CharacterFlags, ShapedCluster};
 pub use reshape::{
-    Edit, LineEnd, LineStart, PendingLine, ReshapedLine, ReshapedRun, ReshapedText,
+    EdgeRequest, Edit, LineEnd, LineStart, PendingLine, ReshapedLine, ReshapedRun, ReshapedText,
     ReshapedTextMark, Reshaper,
 };
 

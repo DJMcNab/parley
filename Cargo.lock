@@ -2750,6 +2750,7 @@ dependencies = [
  "linebender_resource_handle",
  "oxipng",
  "parlance",
+ "parley_data",
  "parley_dev",
  "parley_engine",
  "peniko",

@@ -54,6 +54,68 @@ use icu_properties::props::{BidiClass, GeneralCategory, GraphemeClusterBreak, Sc
 /// Baked data (`PackTab` tables).
 pub(crate) mod generated;
 
+/// The class of a character for the purposes of the CSS `text-spacing-trim` property.
+///
+/// Many fullwidth CJK punctuation glyphs only draw in half of their box, and the blank half can be
+/// trimmed. These classes say which characters that applies to, and which characters cause it.
+/// They follow the definitions in [Text Spacing Trim Character Classes][classes] in CSS Text 4.
+///
+/// [classes]: https://drafts.csswg.org/css-text-4/#text-spacing-classes
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum TextSpacingTrimClass {
+    /// Not relevant to trimming.
+    Other = 0,
+    /// Fullwidth opening punctuation, e.g. `「` or `（`.
+    ///
+    /// These are the characters of general category `Ps` that are in the CJK Symbols and
+    /// Punctuation block or have an East Asian Width of Fullwidth, and the left curly quotes
+    /// (U+2018 and U+201C).
+    Open = 1,
+    /// Fullwidth closing punctuation, e.g. `」` or `）`.
+    ///
+    /// These are the characters of general category `Pe` that are in the CJK Symbols and
+    /// Punctuation block or have an East Asian Width of Fullwidth, and the right curly quotes
+    /// (U+2019 and U+201D).
+    Close = 2,
+    /// Fullwidth middle dot punctuation (U+00B7, U+2027 and U+30FB), and the ideographic space
+    /// (U+3000).
+    ///
+    /// The ideographic space isn't punctuation, but it has the same effect on punctuation next to
+    /// it as a middle dot has.
+    Middle = 3,
+    /// Opening punctuation (general category `Ps`) that isn't fullwidth, e.g. `(`.
+    NarrowOpen = 4,
+    /// Closing punctuation (general category `Pe`) that isn't fullwidth, e.g. `)`.
+    NarrowClose = 5,
+    /// Fullwidth dot punctuation: `、`, `。`, `，` and `．`.
+    ///
+    /// Depending on where a font draws these within their box, which varies by language, they
+    /// behave as either [`Self::Close`] or [`Self::Middle`].
+    Dot = 6,
+    /// Fullwidth colon punctuation: `：` and `；`.
+    ///
+    /// Depending on where a font draws these within their box, which varies by language, they
+    /// behave as either [`Self::Close`] or [`Self::Middle`].
+    Colon = 7,
+}
+
+impl TextSpacingTrimClass {
+    /// The class with the given discriminant, which must be less than 8.
+    const fn from_bits(bits: u32) -> Self {
+        match bits {
+            0 => Self::Other,
+            1 => Self::Open,
+            2 => Self::Close,
+            3 => Self::Middle,
+            4 => Self::NarrowOpen,
+            5 => Self::NarrowClose,
+            6 => Self::Dot,
+            7 => Self::Colon,
+            _ => unreachable!(),
+        }
+    }
+}
 /// Unicode character properties relevant for text analysis.
 #[derive(Copy, Clone, Debug)]
 pub struct Properties(u64);
@@ -72,6 +134,7 @@ impl Properties {
     const IS_EMOJI_MODIFIER_BITS: u32 = 1;
     const IS_EMOJI_MODIFIER_BASE_BITS: u32 = 1;
     const IS_DEFAULT_IGNORABLE_BITS: u32 = 1;
+    const TEXT_SPACING_TRIM_CLASS_BITS: u32 = 3;
 
     const SCRIPT_SHIFT: u32 = 0;
     const GC_SHIFT: u32 = Self::SCRIPT_SHIFT + Self::SCRIPT_BITS;
@@ -93,14 +156,16 @@ impl Properties {
         Self::IS_EMOJI_MODIFIER_SHIFT + Self::IS_EMOJI_MODIFIER_BITS;
     const IS_DEFAULT_IGNORABLE_SHIFT: u32 =
         Self::IS_EMOJI_MODIFIER_BASE_SHIFT + Self::IS_EMOJI_MODIFIER_BASE_BITS;
+    const TEXT_SPACING_TRIM_CLASS_SHIFT: u32 =
+        Self::IS_DEFAULT_IGNORABLE_SHIFT + Self::IS_DEFAULT_IGNORABLE_BITS;
 
     #[inline(always)]
     /// Returns the properties for a given character.
     pub fn get(ch: char) -> Self {
-        let inner: u32 = generated::composite_packtab_get(u32::from(ch).try_into().unwrap());
+        let inner: u64 = generated::composite_packtab_get(u32::from(ch).try_into().unwrap());
         // If we ever set the highest bit, `inner` would become i64.
         // Make sure to use `cast_unsigned` in that case.
-        Self(inner.into())
+        Self(inner)
     }
 
     /// Creates a new [`Properties`] from the given properties
@@ -118,6 +183,7 @@ impl Properties {
         is_emoji_presentation: bool,
         is_emoji_modifier: bool,
         is_emoji_modifier_base: bool,
+        text_spacing_trim_class: TextSpacingTrimClass,
     ) -> Self {
         // The TrieValue implementation is guaranteed to be stable (strongly enough for our purposes, at least).
         // See https://github.com/unicode-org/icu4x/issues/6067#issuecomment-5361908792 and
@@ -140,7 +206,8 @@ impl Properties {
                 | ((is_emoji as u64) << Self::IS_EMOJI_SHIFT)
                 | ((is_emoji_presentation as u64) << Self::IS_EMOJI_PRESENTATION_SHIFT)
                 | ((is_emoji_modifier as u64) << Self::IS_EMOJI_MODIFIER_SHIFT)
-                | ((is_emoji_modifier_base as u64) << Self::IS_EMOJI_MODIFIER_BASE_SHIFT),
+                | ((is_emoji_modifier_base as u64) << Self::IS_EMOJI_MODIFIER_BASE_SHIFT)
+                | ((text_spacing_trim_class as u64) << Self::TEXT_SPACING_TRIM_CLASS_SHIFT),
         )
     }
 
@@ -281,6 +348,15 @@ impl Properties {
             Self::IS_DEFAULT_IGNORABLE_BITS,
         ) != 0
     }
+
+    /// Returns the character's class for the purposes of the CSS `text-spacing-trim` property.
+    #[inline(always)]
+    pub fn text_spacing_trim_class(&self) -> TextSpacingTrimClass {
+        TextSpacingTrimClass::from_bits(self.bits(
+            Self::TEXT_SPACING_TRIM_CLASS_SHIFT,
+            Self::TEXT_SPACING_TRIM_CLASS_BITS,
+        ))
+    }
 }
 
 impl From<Properties> for u64 {
@@ -291,11 +367,11 @@ impl From<Properties> for u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::Properties;
+    use super::{Properties, TextSpacingTrimClass};
     use icu_properties::props::{
-        BidiClass, DefaultIgnorableCodePoint, Emoji, EmojiModifier, EmojiModifierBase,
-        EmojiPresentation, ExtendedPictographic, GeneralCategory, GraphemeClusterBreak, LineBreak,
-        RegionalIndicator, Script, VariationSelector,
+        BidiClass, DefaultIgnorableCodePoint, EastAsianWidth, Emoji, EmojiModifier,
+        EmojiModifierBase, EmojiPresentation, ExtendedPictographic, GeneralCategory,
+        GraphemeClusterBreak, LineBreak, RegionalIndicator, Script, VariationSelector,
     };
     use icu_properties::{CodePointMapData, CodePointSetData};
 
@@ -339,6 +415,7 @@ mod tests {
         is_emoji_presentation: bool,
         is_emoji_modifier: bool,
         is_emoji_modifier_base: bool,
+        text_spacing_trim_class: TextSpacingTrimClass,
     }
 
     impl UnclampedProperties {
@@ -371,6 +448,7 @@ mod tests {
                 is_emoji_presentation: CodePointSetData::new::<EmojiPresentation>().contains32(cp),
                 is_emoji_modifier: CodePointSetData::new::<EmojiModifier>().contains32(cp),
                 is_emoji_modifier_base: CodePointSetData::new::<EmojiModifierBase>().contains32(cp),
+                text_spacing_trim_class: text_spacing_trim_class_from_icu4x(cp),
             }
         }
 
@@ -392,6 +470,7 @@ mod tests {
                 is_emoji_presentation: properties.is_emoji_presentation(),
                 is_emoji_modifier: properties.is_emoji_modifier(),
                 is_emoji_modifier_base: properties.is_emoji_modifier_base(),
+                text_spacing_trim_class: properties.text_spacing_trim_class(),
             }
         }
 
@@ -411,7 +490,84 @@ mod tests {
                 self.is_emoji_presentation,
                 self.is_emoji_modifier,
                 self.is_emoji_modifier_base,
+                self.text_spacing_trim_class,
             )
         }
+    }
+
+    /// Derives the `text-spacing-trim` class of a code point from ICU4X's data, following
+    /// <https://drafts.csswg.org/css-text-4/#text-spacing-classes>.
+    fn text_spacing_trim_class_from_icu4x(cp: u32) -> TextSpacingTrimClass {
+        let is_cjk_symbol_or_fullwidth = (0x3000..=0x303F).contains(&cp)
+            || CodePointMapData::<EastAsianWidth>::new().get32(cp) == EastAsianWidth::Fullwidth;
+        match cp {
+            0x3001 | 0x3002 | 0xFF0C | 0xFF0E => TextSpacingTrimClass::Dot,
+            0xFF1A | 0xFF1B => TextSpacingTrimClass::Colon,
+            0x00B7 | 0x2027 | 0x30FB | 0x3000 => TextSpacingTrimClass::Middle,
+            0x2018 | 0x201C => TextSpacingTrimClass::Open,
+            0x2019 | 0x201D => TextSpacingTrimClass::Close,
+            _ => match (
+                CodePointMapData::<GeneralCategory>::new().get32(cp),
+                is_cjk_symbol_or_fullwidth,
+            ) {
+                (GeneralCategory::OpenPunctuation, true) => TextSpacingTrimClass::Open,
+                (GeneralCategory::OpenPunctuation, false) => TextSpacingTrimClass::NarrowOpen,
+                (GeneralCategory::ClosePunctuation, true) => TextSpacingTrimClass::Close,
+                (GeneralCategory::ClosePunctuation, false) => TextSpacingTrimClass::NarrowClose,
+                _ => TextSpacingTrimClass::Other,
+            },
+        }
+    }
+
+    /// Asserts that each of `chars` has the `expected` `text-spacing-trim` class.
+    #[track_caller]
+    fn assert_text_spacing_trim_class(chars: &[char], expected: TextSpacingTrimClass) {
+        for &ch in chars {
+            assert_eq!(
+                Properties::get(ch).text_spacing_trim_class(),
+                expected,
+                "U+{:04X} {ch}",
+                ch as u32
+            );
+        }
+    }
+
+    #[test]
+    fn text_spacing_trim_brackets() {
+        use TextSpacingTrimClass::{Close, NarrowClose, NarrowOpen, Open};
+        assert_text_spacing_trim_class(&['「', '『', '（', '〔', '【', '｟'], Open);
+        assert_text_spacing_trim_class(&['」', '』', '）', '〕', '】', '｠'], Close);
+        // Halfwidth forms and Latin brackets are narrow.
+        assert_text_spacing_trim_class(&['(', '[', '{', '｢'], NarrowOpen);
+        assert_text_spacing_trim_class(&[')', ']', '}', '｣'], NarrowClose);
+    }
+
+    #[test]
+    fn text_spacing_trim_quotes() {
+        use TextSpacingTrimClass::{Close, NarrowOpen, Open, Other};
+        assert_text_spacing_trim_class(&['‘', '“'], Open);
+        assert_text_spacing_trim_class(&['’', '”'], Close);
+        // Most other quotation marks aren't opening or closing punctuation.
+        assert_text_spacing_trim_class(&['"', '\'', '«', '»'], Other);
+        // The low quotation marks are, according to Unicode (they're `Ps`).
+        assert_text_spacing_trim_class(&['‚', '„'], NarrowOpen);
+    }
+
+    #[test]
+    fn text_spacing_trim_dots() {
+        use TextSpacingTrimClass::{Colon, Dot, Middle};
+        assert_text_spacing_trim_class(&['·', '‧', '・', '\u{3000}'], Middle);
+        assert_text_spacing_trim_class(&['、', '。', '，', '．'], Dot);
+        assert_text_spacing_trim_class(&['：', '；'], Colon);
+    }
+
+    #[test]
+    fn text_spacing_trim_other() {
+        // Fullwidth and CJK characters that aren't opening or closing punctuation, and the Latin
+        // counterparts of the fullwidth dots and colons.
+        assert_text_spacing_trim_class(
+            &['水', 'あ', 'a', ' ', '！', '？', '〜', '.', ',', ':', ';'],
+            TextSpacingTrimClass::Other,
+        );
     }
 }

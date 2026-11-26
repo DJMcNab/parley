@@ -67,11 +67,20 @@ pub(crate) fn shape_text<'a, B: Brush>(
     let mut floated_box_iter = floated_boxes.iter().peekable();
 
     // Collect the font features of each span of characters, including the ligature suppression of
-    // letter spacing.
+    // letter spacing and the punctuation trimmed by `text-spacing-trim`.
     //
     // Adjacent styles often only differ in properties that are irrelevant here (like the brush).
     // Spans of such styles are merged, so that features are usually constant over a shaped run.
     ranged_features.clear();
+    let trim_sites = &mut layout.data.trim_sites;
+    trim_sites.collect(
+        text,
+        rcx,
+        styles,
+        char_style_indices,
+        analysis.bidi_levels(),
+    );
+    let mut trims = trim_sites.trims().peekable();
     let mut span_start = 0_usize;
     for span in char_style_indices.chunk_by(|&a, &b| {
         a == b || {
@@ -98,7 +107,14 @@ pub(crate) fn shape_text<'a, B: Brush>(
                 char_range,
             }
         }));
+        // Trimming takes precedence over the style's own features, so it comes after them. It is
+        // added per span to keep the features sorted by the start of their ranges.
+        ranged_features.extend(core::iter::from_fn(|| {
+            trims.next_if(|trim| trim.char_range.start < char_range.end)
+        }));
     }
+    // This borrows the layout.
+    drop(trims);
 
     // Split when shaping-relevant style properties change and at floated boxes. Font features are
     // not among these: they can change within an item.

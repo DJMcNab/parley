@@ -6,12 +6,12 @@
 use icu_properties::{
     CodePointMapData, CodePointSetData,
     props::{
-        BidiClass, DefaultIgnorableCodePoint, Emoji, EmojiModifier, EmojiModifierBase,
-        EmojiPresentation, ExtendedPictographic, GeneralCategory, GraphemeClusterBreak, LineBreak,
-        Script, VariationSelector,
+        BidiClass, DefaultIgnorableCodePoint, EastAsianWidth, Emoji, EmojiModifier,
+        EmojiModifierBase, EmojiPresentation, ExtendedPictographic, GeneralCategory,
+        GraphemeClusterBreak, LineBreak, Script, VariationSelector,
     },
 };
-use parley_data::Properties;
+use parley_data::{Properties, TextSpacingTrimClass};
 use std::io::{BufWriter, Write};
 
 const COPYRIGHT_HEADER: &str =
@@ -44,6 +44,8 @@ pub fn generate(out: std::path::PathBuf, config: &Config) {
     let emoji_modifier_data = CodePointSetData::new::<EmojiModifier>();
     let emoji_modifier_base_data = CodePointSetData::new::<EmojiModifierBase>();
 
+    let east_asian_width_data = CodePointMapData::<EastAsianWidth>::new();
+
     // Generate the data required for `CompositeProps`.
     // Dense characters table for 0..=0x10FFFF
     let mut characters = Vec::with_capacity(0x110000);
@@ -58,6 +60,38 @@ pub fn generate(out: std::path::PathBuf, config: &Config) {
         // tracks is an ICU4X implementation detail that we try to match.
         let needs_dictionary_word_break = line_break_data.get32(cp) == LineBreak::ComplexContext
             || matches!(script_data.get32(cp), Script::Han | Script::Hiragana);
+
+        // See https://drafts.csswg.org/css-text-4/#text-spacing-classes
+        let text_spacing_trim_class = {
+            // The characters that opening and closing punctuation must be among to be fullwidth:
+            // those in the CJK Symbols and Punctuation block, or with an East Asian Width of
+            // Fullwidth.
+            let is_cjk_symbol_or_fullwidth = (0x3000..=0x303F).contains(&cp)
+                || east_asian_width_data.get32(cp) == EastAsianWidth::Fullwidth;
+            match cp {
+                // Fullwidth dot punctuation.
+                0x3001 | 0x3002 | 0xFF0C | 0xFF0E => TextSpacingTrimClass::Dot,
+                // Fullwidth colon punctuation.
+                0xFF1A | 0xFF1B => TextSpacingTrimClass::Colon,
+                // Fullwidth middle dot punctuation.
+                0x00B7 | 0x2027 | 0x30FB => TextSpacingTrimClass::Middle,
+                // The ideographic space isn't punctuation, but opening and closing punctuation
+                // next to it is trimmed just as it is next to a middle dot.
+                0x3000 => TextSpacingTrimClass::Middle,
+                // The curly quotes are shared between Latin, where they're narrow, and CJK, where
+                // they're often fullwidth. They are initial and final punctuation (`Pi` and
+                // `Pf`), not opening and closing (`Ps` and `Pe`), so they're listed explicitly.
+                0x2018 | 0x201C => TextSpacingTrimClass::Open,
+                0x2019 | 0x201D => TextSpacingTrimClass::Close,
+                _ => match (general_category_data.get32(cp), is_cjk_symbol_or_fullwidth) {
+                    (GeneralCategory::OpenPunctuation, true) => TextSpacingTrimClass::Open,
+                    (GeneralCategory::OpenPunctuation, false) => TextSpacingTrimClass::NarrowOpen,
+                    (GeneralCategory::ClosePunctuation, true) => TextSpacingTrimClass::Close,
+                    (GeneralCategory::ClosePunctuation, false) => TextSpacingTrimClass::NarrowClose,
+                    _ => TextSpacingTrimClass::Other,
+                },
+            }
+        };
 
         let v = Properties::new(
             script_data.get32(cp),
@@ -80,6 +114,7 @@ pub fn generate(out: std::path::PathBuf, config: &Config) {
             emoji_presentation_data.contains32(cp),
             emoji_modifier_data.contains32(cp),
             emoji_modifier_base_data.contains32(cp),
+            text_spacing_trim_class,
         );
         characters.push(u64::from(v).cast_signed());
     }

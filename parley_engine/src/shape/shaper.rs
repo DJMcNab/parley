@@ -582,8 +582,8 @@ pub(crate) fn language_to_harfrust(language: Option<&Language>) -> Option<harfru
 }
 
 /// Clip features to the text being shaped, and translate source indices to buffer clusters.
-pub(crate) fn features_to_harfrust(
-    features: &[RangedFeature],
+pub(crate) fn features_to_harfrust<'a>(
+    features: impl IntoIterator<Item = &'a RangedFeature>,
     chars: Range<u32>,
     out: &mut Vec<harfrust::Feature>,
 ) {

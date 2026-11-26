@@ -20,8 +20,10 @@ use crate::style::Brush;
 use crate::{BaselineShift, OverflowWrap, TextWrapMode, VerticalAlign, WhiteSpaceCollapse};
 
 use core::range::Range;
-use parley_engine::Atom;
-use parley_engine::shape::{Character, ReshapedTextMark, Reshaper, Whitespace};
+use parley_engine::shape::{
+    Character, EdgeRequest, PendingLine, ReshapedTextMark, Reshaper, Whitespace,
+};
+use parley_engine::{Atom, RangedFeature, ShapedText};
 use smallvec::SmallVec;
 
 #[derive(Default)]
@@ -79,6 +81,12 @@ struct LineState {
     /// These are the line's justification opportunities, before subtracting those that end up in
     /// the line's hanging whitespace.
     num_word_separators: u32,
+
+    /// The closing punctuation character that the line only has room for because its end will
+    /// trim it (`text-spacing-trim: allow-end`). Only hanging whitespace can follow it.
+    ///
+    /// [`Self::x`] still counts the character's untrimmed advance, as it does for all reshaping.
+    trimmed_end: Option<u32>,
 }
 
 impl LineState {
@@ -88,6 +96,7 @@ impl LineState {
         self.reshaped_start_advance_delta = 0.0;
         self.box_metrics.reset();
         self.num_word_separators = 0;
+        self.trimmed_end = None;
     }
 }
 
@@ -939,14 +948,20 @@ impl<'a, B: Brush> BreakLines<'a, B> {
             .shaped_text
             .shaped_clusters()
             .get(state.cluster_idx as usize)
-            && !cluster.is_safe_to_break_before()
         {
             let line_start_char = cluster.chars_range().start;
-            state.line.reshaped_start_advance_delta = self
-                .reshaper
-                .measure_start(&data.text, &data.shaped_text, line_start_char, None)
-                .0
-                .advance_delta();
+            let start_override = data.trim_sites.line_start_override(line_start_char);
+            if !cluster.is_safe_to_break_before() || start_override.is_some() {
+                let request = EdgeRequest {
+                    edit: None,
+                    features: start_override.as_slice(),
+                };
+                state.line.reshaped_start_advance_delta = self
+                    .reshaper
+                    .measure_start(&data.text, &data.shaped_text, line_start_char, request)
+                    .0
+                    .advance_delta();
+            }
         }
     }
 
@@ -997,22 +1012,25 @@ impl<'a, B: Brush> BreakLines<'a, B> {
                 // in the non-hanging part.
                 return false;
             }
-            let reshaper = &mut this.reshaper;
-            let (start, _) = reshaper.measure_start(text, shaped_text, line_start_char, None);
-            let end = reshaper.measure_end(text, shaped_text, line_end_char, None);
-            let delta = reshaper
-                .line(text, shaped_text, &start, &end)
+            let chars = Range::from(line_start_char..line_end_char);
+            let overrides = data.trim_sites.line_overrides(chars, line.trimmed_end);
+            let line_delta = measure_line(&mut this.reshaper, text, shaped_text, chars, &overrides)
                 .advance_delta();
-            line.x + delta > max_advance
+            line.x + line_delta > max_advance
         }
 
-        let end_is_unsafe_to_break = (self.layout.data.shaped_text.shaped_clusters())
+        let (data, line) = (&self.layout.data, &self.state.line);
+        let end_needs_reshaping = (data.shaped_text.shaped_clusters())
             .get(self.state.cluster_idx as usize)
-            .is_some_and(|cluster| !cluster.is_safe_to_break_before());
+            .is_some_and(|cluster| {
+                let end_override = (data.trim_sites)
+                    .line_end_override(cluster.chars_range().start, line.trimmed_end);
+                !cluster.is_safe_to_break_before() || end_override.is_some()
+            });
 
         // Note that, if the end needs no reshaping, reshaping changes only the line's start. We
         // already took that into account when fitting the line.
-        end_is_unsafe_to_break && overflows(self, max_advance)
+        end_needs_reshaping && overflows(self, max_advance)
     }
 
     /// Attempt breaking the line again, this time fitting it to less than its current advance.
@@ -1339,6 +1357,32 @@ impl<'a, B: Brush> BreakLines<'a, B> {
                             is_separator,
                         );
                     }
+                    // Case: the atom is closing punctuation that fits once trimmed, which
+                    // `text-spacing-trim: allow-end` permits at the end of the line.
+                    //
+                    // We append it to the line. The line's advance still counts it untrimmed, so
+                    // nothing but hanging whitespace fits after it: the line breaks at the next
+                    // opportunity, or falls back to one from before this atom.
+                    else if fits_with_trimmed_end(
+                        &mut self.reshaper,
+                        &self.layout.data,
+                        &self.state.line,
+                        atom.char_range().end - 1,
+                        next_x,
+                        max_advance,
+                    ) {
+                        if max_height_exceeded {
+                            return self.max_height_break_data(line_height);
+                        }
+                        self.state.append_atom_to_line(
+                            &atom,
+                            next_x,
+                            style_index,
+                            &self.layout.data,
+                            is_separator,
+                        );
+                        self.state.line.trimmed_end = Some(atom.char_range().end - 1);
+                    }
                     // Case: we have previously encountered a REGULAR line-breaking opportunity in the current line
                     //
                     // We "take" the line-breaking opportunity by starting a new line and resetting our
@@ -1375,6 +1419,8 @@ impl<'a, B: Brush> BreakLines<'a, B> {
                         if max_height_exceeded {
                             return self.max_height_break_data(line_height);
                         }
+                        // Punctuation this atom follows doesn't end the line.
+                        self.state.line.trimmed_end = None;
                         self.state.append_atom_to_line(
                             &atom,
                             next_x,
@@ -1725,6 +1771,53 @@ impl<B: Brush> Drop for BreakLines<'_, B> {
     }
 }
 
+/// Measure the line of characters `chars` once its edges are reshaped: to break the line there,
+/// and with the `overrides` of [`TrimSites::line_overrides`](crate::text_spacing_trim::TrimSites).
+fn measure_line<'e>(
+    reshaper: &mut Reshaper,
+    text: &str,
+    shaped_text: &ShapedText,
+    chars: Range<u32>,
+    overrides: &'e [Option<RangedFeature>; 2],
+) -> PendingLine<'e> {
+    let [start, end] = overrides.each_ref().map(|feature| EdgeRequest {
+        edit: None,
+        features: feature.as_slice(),
+    });
+    let (start, _) = reshaper.measure_start(text, shaped_text, chars.start, start);
+    let end = reshaper.measure_end(text, shaped_text, chars.end, end);
+    reshaper.line(text, shaped_text, &start, &end)
+}
+
+/// Returns whether `line` fits `max_advance` when ending it with the atom that ends with the
+/// character `last_char`, if that is closing punctuation that `text-spacing-trim: allow-end`
+/// permits trimming.
+///
+/// `next_x` is the line's advance including that atom, untrimmed. What trimming saves is up to
+/// the font, so this is measured by reshaping.
+#[cold]
+#[inline(never)]
+fn fits_with_trimmed_end<B: Brush>(
+    reshaper: &mut Reshaper,
+    data: &LayoutData<B>,
+    line: &LineState,
+    last_char: u32,
+    next_x: f32,
+    max_advance: f32,
+) -> bool {
+    if !data.trim_sites.allows_end_trim(last_char) {
+        return false;
+    }
+    let (text, shaped_text) = (&data.text, &data.shaped_text);
+    let line_start_char = shaped_text.shaped_clusters()[line.clusters.start as usize]
+        .chars_range()
+        .start;
+    let chars = Range::from(line_start_char..last_char + 1);
+    let overrides = data.trim_sites.line_overrides(chars, Some(last_char));
+    let line_delta = measure_line(reshaper, text, shaped_text, chars, &overrides).advance_delta();
+    next_x + line_delta <= max_advance
+}
+
 #[expect(clippy::cast_possible_truncation, reason = "deferred")]
 fn commit_line<B: Brush>(
     layout: &mut Layout<B>,
@@ -1749,17 +1842,27 @@ fn commit_line<B: Brush>(
     let edge_is_unsafe_to_break = |cluster: u32| {
         (shaped_clusters.get(cluster as usize)).is_some_and(|c| !c.is_safe_to_break_before())
     };
-    // Reshape the line if its edges fell at positions that are unsafe to break at.
+    // The characters whose edges are reshaped, and the run the last of them is in. This is the
+    // whole line, unless its end trims punctuation that is followed by hanging whitespace in other
+    // runs: only the punctuation's run is reshaped, and those runs are kept as they are.
+    let mut chars = Range::from(char_at(state.clusters.start)..char_at(state.clusters.end));
+    let mut end_run_idx = state.items.end.saturating_sub(1);
+    if let Some(trimmed_end) = state.trimmed_end {
+        end_run_idx =
+            (shaped_text.runs()).partition_point(|run| run.characters_range.end <= trimmed_end);
+        chars.end = (chars.end).min(shaped_text.runs()[end_run_idx].characters_range.end);
+    }
+    let overrides = (layout.data.trim_sites).line_overrides(chars, state.trimmed_end);
+    // Reshape the line if its edges fell at positions that are unsafe to break at, or if
+    // `text-spacing-trim` changes them.
     let reshaped_line = (edge_is_unsafe_to_break(state.clusters.start)
-        || edge_is_unsafe_to_break(state.clusters.end))
+        || edge_is_unsafe_to_break(state.clusters.end)
+        || overrides.iter().any(Option::is_some))
     .then(
         #[inline(never)]
         || {
             let text = &layout.data.text;
-            let (start, _) =
-                reshaper.measure_start(text, shaped_text, char_at(state.clusters.start), None);
-            let end = reshaper.measure_end(text, shaped_text, char_at(state.clusters.end), None);
-            let line = reshaper.line(text, shaped_text, &start, &end);
+            let line = measure_line(reshaper, text, shaped_text, chars, &overrides);
             reshaper.push_line(text, shaped_text, &line, &mut layout.data.reshaped)
         },
     );
@@ -1833,8 +1936,10 @@ fn commit_line<B: Brush>(
                 );
             }
         }
-        if run_idx + 1 == state.items.end {
+        if run_idx == end_run_idx {
             cluster_range.end = source_clusters.end.max(cluster_range.start);
+        } else if run_idx + 1 == state.items.end {
+            cluster_range.end = state.clusters.end;
         }
 
         if !cluster_range.is_empty() {
@@ -1867,7 +1972,7 @@ fn commit_line<B: Brush>(
             });
         }
 
-        if run_idx + 1 == state.items.end
+        if run_idx == end_run_idx
             && let Some(reshaped_run) = reshaped_end_run
         {
             commit_reshaped_run(

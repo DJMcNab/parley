@@ -238,6 +238,7 @@ fn create_root_style() -> TextStyle<'static, 'static, ColorBrush> {
         white_space_collapse: WhiteSpaceCollapse::PreserveBreaks,
         // Only affects the `TreeBuilder`, which collapses white space.
         collapsed_space: crate::CollapsedSpace::Space,
+        text_spacing_trim: crate::TextSpacingTrim::NORMAL,
     }
 }
 
@@ -273,6 +274,7 @@ fn set_root_style(rb: &mut RangedBuilder<'_, ColorBrush>) {
     rb.push_default(StyleProperty::WordBreak(WordBreak::BreakAll));
     rb.push_default(StyleProperty::LineBreak(LineBreak::Loose));
     rb.push_default(StyleProperty::OverflowWrap(OverflowWrap::Anywhere));
+    rb.push_default(crate::TextSpacingTrim::NORMAL);
     rb.push_default(StyleProperty::WhiteSpaceCollapse(
         WhiteSpaceCollapse::PreserveBreaks,
     ));

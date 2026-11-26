@@ -9,6 +9,7 @@ use crate::layout::whitespace::whitespace_hangs;
 use crate::layout::{ContentWidths, LineMetrics, Style};
 use crate::resolve::ResolvedStyle;
 use crate::style::Brush;
+use crate::text_spacing_trim::TrimSites;
 use crate::{IndentOptions, LineHeight, OverflowWrap, TextWrapMode, WhiteSpaceCollapse};
 use core::range::Range;
 
@@ -215,6 +216,8 @@ pub(crate) struct LayoutData<B: Brush> {
     // Output of shaping (input to line breaking)
     pub(crate) shaped_text: ShapedText,
     pub(crate) runs: Vec<RunData>,
+    /// The punctuation that `text-spacing-trim` trims depending on where lines break.
+    pub(crate) trim_sites: TrimSites,
 
     // Settings for line breaking and alignment
     pub(crate) alignment_setting: super::Alignment,
@@ -269,6 +272,7 @@ impl<B: Brush> Default for LayoutData<B> {
             floated_boxes: Vec::new(),
             shaped_text: ShapedText::new(),
             runs: Vec::new(),
+            trim_sites: TrimSites::default(),
             lines: Vec::new(),
             line_items: Vec::new(),
             reshaped: ReshapedText::new(),
@@ -302,6 +306,7 @@ impl<B: Brush> LayoutData<B> {
         self.floated_boxes.clear();
         self.shaped_text.clear();
         self.runs.clear();
+        self.trim_sites.clear();
         self.lines.clear();
         self.line_items.clear();
         self.reshaped.clear();

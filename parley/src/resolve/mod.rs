@@ -17,7 +17,7 @@ use super::style::{
 use crate::font::FontContext;
 use crate::style::TextStyle;
 use crate::util::nearly_eq;
-use crate::{CollapsedSpace, TextWrapMode, WhiteSpaceCollapse, WordBreak};
+use crate::{CollapsedSpace, TextSpacingTrim, TextWrapMode, WhiteSpaceCollapse, WordBreak};
 use crate::{LineBreak, LineHeight, OverflowWrap, VerticalAlign, layout};
 use core::borrow::Borrow;
 use core::range::Range;
@@ -168,6 +168,7 @@ impl ResolveContext {
             StyleProperty::TextWrapMode(value) => TextWrapMode(*value),
             StyleProperty::WhiteSpaceCollapse(value) => WhiteSpaceCollapse(*value),
             StyleProperty::CollapsedSpace(value) => CollapsedSpace(*value),
+            StyleProperty::TextSpacingTrim(value) => TextSpacingTrim(*value),
         }
     }
 
@@ -210,6 +211,7 @@ impl ResolveContext {
             text_wrap_mode: raw_style.text_wrap_mode,
             white_space_collapse: raw_style.white_space_collapse,
             collapsed_space: raw_style.collapsed_space,
+            text_spacing_trim: raw_style.text_spacing_trim,
         }
     }
 
@@ -402,6 +404,8 @@ pub(crate) enum ResolvedProperty<B: Brush> {
     WhiteSpaceCollapse(WhiteSpaceCollapse),
     /// The character that collapsible whitespace collapses to.
     CollapsedSpace(CollapsedSpace),
+    /// Where fullwidth punctuation is set half-width.
+    TextSpacingTrim(TextSpacingTrim),
 }
 
 /// Flattened group of style properties.
@@ -452,6 +456,8 @@ pub(crate) struct ResolvedStyle<B: Brush> {
     pub(crate) white_space_collapse: WhiteSpaceCollapse,
     /// The character that collapsible whitespace collapses to.
     pub(crate) collapsed_space: CollapsedSpace,
+    /// Where fullwidth punctuation is set half-width.
+    pub(crate) text_spacing_trim: TextSpacingTrim,
 }
 
 impl<B: Brush> ResolvedStyle<B> {
@@ -486,6 +492,7 @@ impl<B: Brush> ResolvedStyle<B> {
             TextWrapMode(value) => self.text_wrap_mode = value,
             WhiteSpaceCollapse(value) => self.white_space_collapse = value,
             CollapsedSpace(value) => self.collapsed_space = value,
+            TextSpacingTrim(value) => self.text_spacing_trim = value,
         }
     }
 
@@ -519,6 +526,7 @@ impl<B: Brush> ResolvedStyle<B> {
             TextWrapMode(value) => self.text_wrap_mode == *value,
             WhiteSpaceCollapse(value) => self.white_space_collapse == *value,
             CollapsedSpace(value) => self.collapsed_space == *value,
+            TextSpacingTrim(value) => self.text_spacing_trim == *value,
         }
     }
 

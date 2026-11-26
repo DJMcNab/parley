@@ -36,6 +36,7 @@ smallvec = { workspace = true }
 linebender_resource_handle = { workspace = true }
 fontique = { workspace = true }
 parlance = { workspace = true }
+parley_data = { workspace = true }
 parley_engine = { workspace = true }
 core_maths = { version = "0.1.1", optional = true }
 hashbrown = { workspace = true }
