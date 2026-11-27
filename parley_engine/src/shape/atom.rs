@@ -965,7 +965,7 @@ mod tests {
     use crate::{
         Analysis, AnalysisOptions, Analyzer, FontInstance, FontInstanceRef, FontSelector,
         ShapeOptions, ShapedText, Shaper,
-        itemize::{Item, Segment},
+        itemize::{Segment, TextRange},
         shape::CharCluster,
     };
 
@@ -973,16 +973,38 @@ mod tests {
         include_bytes!("../../../parley_dev/assets/fonts/roboto_fonts/Roboto-Regular.ttf");
 
     /// A [`FontSelector`] shaping everything with a single font.
-    struct SingleFont(FontInstance);
+    struct SingleFont {
+        font: FontInstance,
+        /// The number of characters in the text; the text is shaped as a single item.
+        char_count: u32,
+    }
 
     impl FontSelector for SingleFont {
+        fn next_split(&mut self) -> u32 {
+            self.char_count
+        }
+
         fn select_font(
             &mut self,
             _segment: &Segment,
-            _options: &ShapeOptions<'_>,
             _cluster: &mut CharCluster,
         ) -> Option<FontInstanceRef<'_>> {
-            Some(self.0.as_ref())
+            Some(self.font.as_ref())
+        }
+
+        fn shape_options(
+            &mut self,
+            _segment: &Segment,
+            _run: TextRange,
+            _font: FontInstanceRef<'_>,
+        ) -> ShapeOptions<'_> {
+            ShapeOptions {
+                font_size: 32.0,
+                point_size: 32.0,
+                language: None,
+                features: &[],
+                variations: &[],
+            }
         }
     }
 
@@ -1014,23 +1036,16 @@ mod tests {
         let mut shaper = Shaper::default();
         let mut shaped = ShapedText::new();
 
-        let char_style_indices = vec![0; text.chars().count()];
-        let items = [Item {
-            char_end: text.chars().count().try_into().unwrap(),
-            options: ShapeOptions {
-                font_size: 32.0,
-                point_size: 32.0,
-                language: None,
-                features: &[],
-                variations: &[],
-            },
-        }];
+        let char_count = text.chars().count();
+        let char_style_indices = vec![0; char_count];
         shaper.shape_text(
             text,
             &analysis,
             &char_style_indices,
-            items,
-            SingleFont(font),
+            SingleFont {
+                font,
+                char_count: char_count.try_into().unwrap(),
+            },
             false,
             &mut shaped,
         );

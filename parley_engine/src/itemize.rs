@@ -8,7 +8,7 @@ use core::{range::Range, str::CharIndices};
 use icu_properties::props::Script as IcuScript;
 use parlance::{BidiLevel, Script};
 
-use crate::{Analysis, CharInfo, ShapeOptions};
+use crate::{Analysis, CharInfo};
 
 /// A range of text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,7 +20,12 @@ pub struct TextRange {
     pub char_range: Range<usize>,
 }
 
-/// A span of text inside an [`Item`] with constant script and bidirectional embedding level.
+/// A span of text inside an item with constant script and bidirectional embedding level.
+///
+/// Items are the spans of text between the offsets returned by
+/// [`FontSelector::next_split`](crate::FontSelector::next_split). An item cannot always be passed to
+/// the shaper as a single unit. Within an item, the script or bidirectional text embedding level
+/// may change, which requires further splitting the item into segments.
 #[derive(Clone, Debug)]
 pub struct Segment {
     /// The text range of this item.
@@ -38,47 +43,6 @@ pub struct Segment {
     /// *with* a particular script. These heuristics may change in the future. For more, see UAX 24
     /// (<https://www.unicode.org/reports/tr24/>) Section 5.
     pub script: Script,
-}
-
-/// A span of text shaped with specific [`ShapeOptions`].
-///
-/// An [`Item`] represents a sequence of constant [`ShapeOptions`], but cannot always be passed to
-/// the shaper as a single unit. Within an item, the script or bidirectional text embedding level
-/// may change, which requires further splitting the item into segments of constant script and bidi
-/// level (see [`Segment`]).
-///
-/// Grapheme boundaries are forced at item boundaries. Graphemes can span across segment boundaries
-/// (and so across shaped runs).
-//
-// TODO: we need to actually reset segmentation, instead of just forcing a boundary. E.g., three
-// Regional Indicator Symbols with an item boundary after the first, should let the second pair form
-// a grapheme.
-#[derive(Debug)]
-pub struct Item<'a> {
-    /// The character offset in the source text which this item ends.
-    ///
-    /// This must be strictly greater than the previous item's end. For the first item, it must be
-    /// greater than 0.
-    pub char_end: u32,
-
-    /// The options to shape this item with.
-    //
-    // TODO: should users instead be allowed to build `options` at the `Segment` level (i.e.,
-    // through some callback)? The motivation is for users to have access to the segment's `Script`
-    // and be able to set font features based on that. If the entirety of `ShapeOptions` moves
-    // there, it would allow users to set, e.g., a font size per segment, even though it's not
-    // necessarily an item boundary; and note an item then doesn't mean a whole lot anymore (other
-    // than forcing a grapheme boundary). We could also allow only some options to be per-segment.
-    pub options: ShapeOptions<'a>,
-    // TODO: we probably should allow users to pass in some data (like we allow passing
-    // style_indices elsewhere), which we copy onto `ShapedRun`. That allows users to easily
-    // correlate `ShapedRun`s with some data they themselves hold.
-    //
-    // This is potentially important for better correctness in `parley`: it itemizes based on
-    // `nearly_eq` of shaping-relevant styles like font size, i.e., it should then read that item's
-    // style to know the font size, even though it may be different for the run.
-    // /// Opaque data copied onto every `ShapedRun` produced from this item.
-    // pub user_data: u16,
 }
 
 /// Produces the items in a text via [`Self::next`]; created by [`Analysis::itemize`].

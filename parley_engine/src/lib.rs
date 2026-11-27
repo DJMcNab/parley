@@ -22,21 +22,48 @@
 //! # // We only compile this doctest because we don't have a font available.
 //! # use parley_engine::{Analysis, AnalysisOptions, Analyzer, FontInstanceRef, FontSelector, ShapedText, ShapeOptions, Shaper};
 //! # use parley_engine::shape::CharCluster;
-//! # use parley_engine::itemize::{Item, Segment};
+//! # use parley_engine::itemize::{Segment, TextRange};
 //! #
-//! # struct NoFont;
-//! # impl FontSelector for NoFont {
-//! #     fn select_font(
-//! #         &mut self,
-//! #         _segment: &Segment,
-//! #         _options: &ShapeOptions<'_>,
-//! #         _cluster: &mut CharCluster,
-//! #     ) -> Option<FontInstanceRef<'_>> {
-//! #         unimplemented!()
-//! #     }
+//! # fn select_font_for(_cluster: &mut CharCluster) -> Option<FontInstanceRef<'static>> {
+//! #     unimplemented!()
 //! # }
 //! #
-//! # let select_font = NoFont;
+//! /// Shapes the text as a single item, with the same options for every run.
+//! struct Selector {
+//!     char_count: u32,
+//! }
+//!
+//! impl FontSelector for Selector {
+//!     fn next_split(&mut self) -> u32 {
+//!         // Split where shaping-relevant styles (e.g., font size) change. Here, there's one item.
+//!         self.char_count
+//!     }
+//!
+//!     fn select_font(
+//!         &mut self,
+//!         _segment: &Segment,
+//!         cluster: &mut CharCluster,
+//!     ) -> Option<FontInstanceRef<'_>> {
+//!         // Select a font covering the cluster.
+//!         select_font_for(cluster)
+//!     }
+//!
+//!     fn shape_options(
+//!         &mut self,
+//!         _segment: &Segment,
+//!         _run: TextRange,
+//!         _font: FontInstanceRef<'_>,
+//!     ) -> ShapeOptions<'_> {
+//!         ShapeOptions {
+//!             font_size: 16.0,
+//!             point_size: 16.0,
+//!             language: None,
+//!             features: &[],
+//!             variations: &[],
+//!         }
+//!     }
+//! }
+//!
 //! let mut analysis = Analysis::default();
 //! let mut analyzer = Analyzer::default();
 //! let mut shaped_text = ShapedText::default();
@@ -51,17 +78,8 @@
 //!     text,
 //!     &analysis,
 //!     &char_style_indices,
-//!     [Item {
-//!         char_end: char_count.try_into().unwrap(),
-//!         options: ShapeOptions {
-//!             font_size: 16.0,
-//!             point_size: 16.0,
-//!             language: None,
-//!             features: &[],
-//!             variations: &[],
-//!         },
-//!      }],
-//!      select_font, // Selects fonts covering each cluster.
+//!     // Splits the text into items, selects fonts, and provides shaping options.
+//!     Selector { char_count: char_count.try_into().unwrap() },
 //!      false, // Don't produce safe-to-concat flags.
 //!      &mut shaped_text,
 //! );

@@ -5,9 +5,11 @@
 //! and `icu` for text analysis.
 
 use alloc::vec::Vec;
+use core::iter::{Copied, Enumerate, Peekable};
+use core::slice;
+use core::str::CharIndices;
 use parley_engine::shape::{CharCluster, Coverage};
 use parley_engine::{Analysis, FontInstance, FontInstanceRef, ShapeOptions, Shaper};
-use smallvec::SmallVec;
 
 use super::layout::Layout;
 use super::resolve::{ResolveContext, ResolvedStyle};
@@ -52,7 +54,7 @@ pub(crate) fn shape_text<'a, B: Brush>(
     scx: &mut Shaper,
     text: &str,
     layout: &mut Layout<B>,
-    style_features: &'a mut Vec<SmallVec<[FontFeature; 8]>>,
+    item_features: &mut Vec<FontFeature>,
 ) {
     let scale = layout.data.scale;
 
@@ -63,125 +65,22 @@ pub(crate) fn shape_text<'a, B: Brush>(
 
     let mut fq = fcx.collection.query(&mut fcx.source_cache);
 
-    let mut floated_box_iter = floated_boxes.iter().peekable();
-
-    // Merge font features with letter-spacing ligature suppression.
-    //
-    // TODO: This copy is slightly unfortunate (though solvable). It's required currently,
-    // because the iterator providing `ShapeOptions` has to provide a borrowed `&'a [FontFeature]`,
-    // which cannot be tied to the lifetime of the call to `Iterator::next`. What we'd need is a
-    // lending iterator (i.e., we probably just need to let `parley_engine` take some trait
-    // providing the items).
-    style_features.clear();
-    style_features.extend(styles.iter().map(|style| {
-        let style_features = rcx.features(style.font_features).unwrap_or(&[]);
-        if !nearly_zero(style.letter_spacing) {
-            // Later values override earlier values.
-            OPTIONAL_LIGATURES_OFF
-                .into_iter()
-                .chain(style_features.iter().copied())
-                .collect()
-        } else {
-            style_features.iter().copied().collect()
-        }
-    }));
-    let style_features = &*style_features;
-
-    // Split when shaping-relevant style properties change and at floated boxes.
-    let items = {
-        // TODO: we currently walk characters here, but we could instead just walk boundaries of
-        // styles, explicit splits, and floated boxes.
-        let char_count = char_style_indices.len();
-
-        // The first character of the item currently being built.
-        let mut item_start_char = 0_usize;
-
-        let mut shaping_splits = shaping_splits.iter().copied().peekable();
-
-        // Positioned at `item_start_char`, i.e., the first character not yet covered by an item.
-        let mut chars = text.char_indices().enumerate().peekable();
-        core::iter::from_fn(move || {
-            if item_start_char == char_count {
-                return None;
-            }
-
-            let item_style_index = char_style_indices[item_start_char];
-            let item_style = &styles[usize::from(item_style_index)];
-
-            // Items are at least one character long, therefore the item's own first character is
-            // never a split point.
-            chars.next();
-
-            let char_end = loop {
-                let Some(&(char_index, (byte_index, _))) = chars.peek() else {
-                    // End of text.
-                    break char_count;
-                };
-
-                // Split at floated boxes, so each box falls on a shaping boundary.
-                //
-                // We loop because there may be multiple boxes at this index.
-                let mut split = false;
-                while let Some(floated_box) = floated_box_iter.peek() {
-                    if floated_box.index < byte_index {
-                        // Floated boxes *before* this index are popped (this occurs if the itemizer
-                        // split a run and we were not called, such as at a bidi boundary).
-                        floated_box_iter.next();
-                    } else if floated_box.index == byte_index {
-                        floated_box_iter.next();
-                        split = true;
-                    } else {
-                        break;
-                    }
-                }
-
-                split |= shaping_splits.next_if_eq(&byte_index).is_some();
-
-                if split {
-                    break char_index;
-                }
-
-                let style_index = char_style_indices[char_index];
-                if style_index != item_style_index {
-                    let style = &styles[usize::from(style_index)];
-                    split = !nearly_eq(style.font_size, item_style.font_size)
-                        || style.locale != item_style.locale
-                        || style.font_variations != item_style.font_variations
-                        || style.font_features != item_style.font_features
-                        || !nearly_eq(style.letter_spacing, item_style.letter_spacing)
-                        || !nearly_eq(style.word_spacing, item_style.word_spacing);
-                }
-
-                if split {
-                    break char_index;
-                }
-
-                chars.next();
-            };
-
-            item_start_char = char_end;
-            Some(parley_engine::itemize::Item {
-                char_end: char_end as u32,
-                options: ShapeOptions {
-                    language: item_style.locale,
-                    font_size: item_style.font_size,
-                    // TODO: Keep the logical font size in `ResolvedStyle` instead of
-                    // dividing the scale back out.
-                    point_size: item_style.font_size / scale,
-                    features: &style_features[item_style_index as usize],
-                    variations: rcx.variations(item_style.font_variations).unwrap_or(&[]),
-                },
-            })
-        })
-    };
-
-    let font_selector = FontSelector::new(&mut fq, rcx, styles);
+    let font_selector = FontSelector::new(
+        &mut fq,
+        rcx,
+        styles,
+        text,
+        char_style_indices,
+        floated_boxes,
+        shaping_splits,
+        scale,
+        item_features,
+    );
 
     scx.shape_text(
         text,
         analysis,
         char_style_indices,
-        items,
         font_selector,
         false,
         &mut layout.data.shaped_text,
@@ -219,6 +118,35 @@ struct FontSelector<'a, 'b, B: Brush> {
     fonts_id: Option<usize>,
     rcx: &'a ResolveContext,
     styles: &'a [ResolvedStyle<B>],
+    /// The style of each character.
+    char_style_indices: &'b [u16],
+    /// The scale factor of the layout.
+    scale: f32,
+
+    /// The text's characters, positioned at [`Self::item_start_char`].
+    //
+    // TODO: we currently walk characters to find item boundaries, but we could instead just walk
+    // boundaries of styles, explicit splits, and floated boxes.
+    chars: Peekable<Enumerate<CharIndices<'b>>>,
+    /// The floated boxes not yet passed by [`Self::chars`].
+    floated_boxes: Peekable<slice::Iter<'b, FloatedBox>>,
+    /// The explicit shaping splits not yet passed by [`Self::chars`].
+    shaping_splits: Peekable<Copied<slice::Iter<'b, usize>>>,
+    /// The first character not yet covered by an item.
+    item_start_char: usize,
+    /// The style the current item is shaped with, which is the style of its first character.
+    ///
+    /// Other characters in the item may have a different style, but that style then doesn't differ
+    /// in a way that is relevant for shaping.
+    item_style_index: u16,
+    /// The font features of the current item, if these are not just its style's font features.
+    ///
+    /// This merges the style's font features with letter-spacing ligature suppression.
+    item_features: &'b mut Vec<FontFeature>,
+    /// Whether the current item is shaped with [`Self::item_features`].
+    item_has_merged_features: bool,
+
+    /// The style of the last cluster a font was selected for.
     style_index: u16,
     attrs: fontique::Attributes,
 
@@ -238,6 +166,12 @@ impl<'a, 'b, B: Brush> FontSelector<'a, 'b, B> {
         query: &'b mut Query<'a>,
         rcx: &'a ResolveContext,
         styles: &'a [ResolvedStyle<B>],
+        text: &'b str,
+        char_style_indices: &'b [u16],
+        floated_boxes: &'b [FloatedBox],
+        shaping_splits: &'b [usize],
+        scale: f32,
+        item_features: &'b mut Vec<FontFeature>,
     ) -> Self {
         let attrs = fontique::Attributes::default();
 
@@ -246,6 +180,15 @@ impl<'a, 'b, B: Brush> FontSelector<'a, 'b, B> {
             fonts_id: None,
             rcx,
             styles,
+            char_style_indices,
+            scale,
+            chars: text.char_indices().enumerate().peekable(),
+            floated_boxes: floated_boxes.iter().peekable(),
+            shaping_splits: shaping_splits.iter().copied().peekable(),
+            item_start_char: 0,
+            item_style_index: 0,
+            item_features,
+            item_has_merged_features: false,
             style_index: 0,
             attrs,
             query_yields_font: None,
@@ -255,22 +198,119 @@ impl<'a, 'b, B: Brush> FontSelector<'a, 'b, B> {
 }
 
 impl<'a, 'b, B: Brush> parley_engine::FontSelector for FontSelector<'a, 'b, B> {
-    fn begin_segment(
-        &mut self,
-        segment: &parley_engine::itemize::Segment,
-        options: &ShapeOptions<'_>,
-    ) {
+    /// Split when shaping-relevant style properties change, at explicit shaping splits, and at
+    /// floated boxes.
+    fn next_split(&mut self) -> u32 {
+        let styles = self.styles;
+        let char_count = self.char_style_indices.len();
+
+        let item_style_index = self.char_style_indices[self.item_start_char];
+        let item_style = &styles[usize::from(item_style_index)];
+
+        // Items are at least one character long, therefore the item's own first character is
+        // never a split point.
+        self.chars.next();
+
+        let char_end = loop {
+            let Some(&(char_index, (byte_index, _))) = self.chars.peek() else {
+                // End of text.
+                break char_count;
+            };
+
+            // Split at floated boxes, so each box falls on a shaping boundary.
+            //
+            // We loop because there may be multiple boxes at this index.
+            let mut split = false;
+            while let Some(floated_box) = self.floated_boxes.peek() {
+                if floated_box.index < byte_index {
+                    // Floated boxes *before* this index are popped (this occurs for boxes at the
+                    // start of the text, where there is nothing to split).
+                    self.floated_boxes.next();
+                } else if floated_box.index == byte_index {
+                    self.floated_boxes.next();
+                    split = true;
+                } else {
+                    break;
+                }
+            }
+
+            split |= self.shaping_splits.next_if_eq(&byte_index).is_some();
+
+            if split {
+                break char_index;
+            }
+
+            let style_index = self.char_style_indices[char_index];
+            if style_index != item_style_index {
+                let style = &styles[usize::from(style_index)];
+                split = !nearly_eq(style.font_size, item_style.font_size)
+                    || style.locale != item_style.locale
+                    || style.font_variations != item_style.font_variations
+                    || style.font_features != item_style.font_features
+                    || !nearly_eq(style.letter_spacing, item_style.letter_spacing)
+                    || !nearly_eq(style.word_spacing, item_style.word_spacing);
+            }
+
+            if split {
+                break char_index;
+            }
+
+            self.chars.next();
+        };
+
+        self.item_start_char = char_end;
+        self.item_style_index = item_style_index;
+
+        // Merge font features with letter-spacing ligature suppression.
+        self.item_has_merged_features = !nearly_zero(item_style.letter_spacing);
+        if self.item_has_merged_features {
+            self.item_features.clear();
+            // Later values override earlier values.
+            self.item_features.extend(OPTIONAL_LIGATURES_OFF);
+            self.item_features
+                .extend_from_slice(self.rcx.features(item_style.font_features).unwrap_or(&[]));
+        }
+
+        char_end as u32
+    }
+
+    fn begin_segment(&mut self, segment: &parley_engine::itemize::Segment) {
+        let item_style = &self.styles[usize::from(self.item_style_index)];
         self.query.set_fallbacks(fontique::FallbackKey::new(
             segment.script,
-            options.language.as_ref(),
+            item_style.locale.as_ref(),
         ));
         self.query_yields_font = None;
+    }
+
+    fn shape_options(
+        &mut self,
+        _segment: &parley_engine::itemize::Segment,
+        _run: parley_engine::itemize::TextRange,
+        _font: FontInstanceRef<'_>,
+    ) -> ShapeOptions<'_> {
+        let item_style = &self.styles[usize::from(self.item_style_index)];
+        ShapeOptions {
+            language: item_style.locale,
+            font_size: item_style.font_size,
+            // TODO: Keep the logical font size in `ResolvedStyle` instead of
+            // dividing the scale back out.
+            point_size: item_style.font_size / self.scale,
+            features: if self.item_has_merged_features {
+                self.item_features
+            } else {
+                self.rcx.features(item_style.font_features).unwrap_or(&[])
+            },
+            variations: self
+                .rcx
+                .variations(item_style.font_variations)
+                .unwrap_or(&[]),
+        }
     }
 
     fn select_font(
         &mut self,
         _segment: &parley_engine::itemize::Segment,
-        _options: &ShapeOptions<'_>,
         cluster: &mut CharCluster,
     ) -> Option<FontInstanceRef<'_>> {
         let style_index = cluster.style_index();

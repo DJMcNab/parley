@@ -18,16 +18,14 @@ use super::style::{Brush, FontFeature, TextStyle};
 use crate::builder::TreeBuilder;
 use crate::inline_box::{FloatedBox, LayoutInlineBox};
 
-use smallvec::SmallVec;
-
 /// Shared scratch space used when constructing text layouts.
 ///
 /// This type is designed to be a global resource with only one per-application (or per-thread).
 pub struct LayoutContext<B: Brush = [u8; 4]> {
     pub(crate) rcx: ResolveContext,
     pub(crate) style_table: Vec<ResolvedStyle<B>>,
-    /// Font features for each style, parallel to `style_table`.
-    pub(crate) style_features: Vec<SmallVec<[FontFeature; 8]>>,
+    /// Scratch for the font features an item is shaped with.
+    pub(crate) item_features: Vec<FontFeature>,
     pub(crate) style_runs: Vec<StyleRun>,
     pub(crate) inline_boxes: Vec<LayoutInlineBox>,
     pub(crate) floated_boxes: Vec<FloatedBox>,
@@ -54,7 +52,7 @@ impl<B: Brush> LayoutContext<B> {
         Self {
             rcx: ResolveContext::default(),
             style_table: vec![],
-            style_features: Vec::new(),
+            item_features: Vec::new(),
             style_runs: vec![],
             inline_boxes: vec![],
             floated_boxes: vec![],

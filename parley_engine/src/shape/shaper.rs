@@ -10,19 +10,20 @@ use parlance::{FontFeature, FontVariation, Language};
 
 use crate::{
     Analysis, CharInfo, FontMetrics, ShapedText,
-    itemize::{Item, Segment, TextRange},
+    itemize::{Segment, TextRange},
     lru_cache::{LruCache, LruStore},
     shape::{CharCluster, cache},
 };
 
-/// Shaping options for one item.
+/// Shaping options for one run.
 ///
 /// These are styling options relevant for shaping. They're styling, in that they're not derived
-/// from the underlying text. When you [shape the text][`Shaper::shape_text`], you should split the
-/// text into [`Item`]s at the points where these options change.
+/// from the underlying text. They are returned by [`FontSelector::shape_options`] for each run
+/// when you [shape the text][`Shaper::shape_text`]. You should split the text into items (see
+/// [`FontSelector::next_split`]) at the points where these options may change.
 #[derive(Debug)]
 pub struct ShapeOptions<'a> {
-    /// The font size to shape the item with.
+    /// The font size to shape the run with.
     ///
     /// This is a number of device/physical points, i.e. the logical font size
     /// multiplied by any active scale factor.
@@ -31,14 +32,14 @@ pub struct ShapeOptions<'a> {
     ///
     /// Used by size-dependent shaping, such as the AAT `trak` table's tracking.
     pub point_size: f32,
-    /// The language to shape the item with.
+    /// The language to shape the run with.
     pub language: Option<Language>,
-    /// The font features to shape the item with.
+    /// The font features to shape the run with.
     ///
     /// If there are font features with duplicate [tags][`FontFeature::tag`], later values override
     /// earlier values.
     pub features: &'a [FontFeature],
-    /// The font variations that are constant over an item.
+    /// The font variations to shape the run with.
     pub variations: &'a [FontVariation],
 }
 
@@ -160,8 +161,9 @@ impl Shaper {
     ///
     /// The `text` passed in must be the same as used for producing `analysis`.
     ///
-    /// This uses the items returned by `items`, and further itemizes the text into
-    /// individually-shapeable segments of constant bidi level and script. `items` should be used to
+    /// The text is split into items at the offsets returned by
+    /// [`select_font.next_split`][FontSelector::next_split], and further itemized into
+    /// individually-shapeable segments of constant bidi level and script. Items should be used to
     /// split on properties like shaping-relevant style changes (e.g., font size) or properties like
     /// language.
     ///
@@ -173,7 +175,9 @@ impl Shaper {
     /// surrounding context (see [`Segment::script`]).
     ///
     /// Each segment is then broken into runs of maximal sequences of character clusters for which
-    /// `select_font` returns the same font.
+    /// [`select_font.select_font`][FontSelector::select_font] returns the same font. Each run is
+    /// shaped with the options returned by
+    /// [`select_font.shape_options`][FontSelector::shape_options].
     ///
     /// If `produce_safe_to_concat_flags` is `true`, shaping records which shaped clusters are [safe
     /// to concatenate before](super::ShapedCluster::is_safe_to_concat_before), and
@@ -187,15 +191,15 @@ impl Shaper {
     ///
     /// # Panics
     ///
-    /// Panics if `items` does not cover the entire source text, or the font returned by
-    /// `select_font` is malformed.
-    pub fn shape_text<'options>(
+    /// Panics if the offsets returned by `select_font.next_split` are not strictly increasing or
+    /// exceed the number of characters in the text, or if the font returned by
+    /// `select_font.select_font` is malformed.
+    pub fn shape_text(
         &mut self,
         text: &str,
         analysis: &Analysis,
         // TODO: rename to something like `user_data` (s.t. we don't assume it's a style per se).
         char_style_indices: &[u16],
-        items: impl IntoIterator<Item = Item<'options>>,
         mut select_font: impl FontSelector,
         produce_safe_to_concat_flags: bool,
         shaped_text: &mut ShapedText,
@@ -214,13 +218,14 @@ impl Shaper {
         let mut previous_item_end = 0;
         let mut itemizer = analysis.itemize(text);
 
-        for item in items {
+        while (previous_item_end as usize) < char_count {
+            let item_end = select_font.next_split();
             assert!(
-                item.char_end > previous_item_end,
+                item_end > previous_item_end,
                 "item ends must be strictly increasing"
             );
             assert!(
-                item.char_end as usize <= char_count,
+                item_end as usize <= char_count,
                 "items must not span past the text"
             );
 
@@ -229,7 +234,7 @@ impl Shaper {
                 let segment = itemizer
                     .next(
                         #[inline(always)]
-                        |text_range| text_range.char_range.end == item.char_end as usize,
+                        |text_range| text_range.char_range.end == item_end as usize,
                     )
                     .expect("A segment must be yielded, given items tile the full text exactly");
 
@@ -238,7 +243,6 @@ impl Shaper {
                     text,
                     &segment,
                     is_item_start,
-                    &item.options,
                     &mut select_font,
                     analysis.char_info(),
                     char_style_indices,
@@ -253,22 +257,17 @@ impl Shaper {
                 };
 
                 debug_assert!(
-                    segment.range.char_range.end <= item.char_end as usize,
+                    segment.range.char_range.end <= item_end as usize,
                     "Segments must not span past the item."
                 );
-                if segment.range.char_range.end == item.char_end as usize {
+                if segment.range.char_range.end == item_end as usize {
                     break;
                 }
                 is_item_start = false;
             }
 
-            previous_item_end = item.char_end;
+            previous_item_end = item_end;
         }
-
-        assert_eq!(
-            previous_item_end as usize, char_count,
-            "`items` does not cover the entire source text"
-        );
         debug_assert_eq!(
             shaped_text.characters().len(),
             char_count,
@@ -279,22 +278,22 @@ impl Shaper {
 
 /// Shape one segment.
 ///
-/// `is_item_start` is `true` iff the segment is the first of its [`Item`].
+/// `is_item_start` is `true` iff the segment is the first of its item (see
+/// [`FontSelector::next_split`]).
 ///
 /// Returns `Err(())` if shaping should be aborted, which happens iff [`FontSelector::select_font`]
 /// returned `None`.
-fn shape_segment(
+fn shape_segment<S: FontSelector>(
     scx: &mut Shaper,
     text: &str,
     segment: &Segment,
     is_item_start: bool,
-    options: &ShapeOptions<'_>,
-    select_font: &mut impl FontSelector,
+    select_font: &mut S,
     char_info: &[CharInfo],
     char_style_indices: &[u16],
     shaped_text: &mut ShapedText,
 ) -> Result<(), ()> {
-    select_font.begin_segment(segment, options);
+    select_font.begin_segment(segment);
 
     let text_range = segment.range.byte_range;
     let char_range = segment.range.char_range;
@@ -318,11 +317,13 @@ fn shape_segment(
         harfrust::Direction::LeftToRight
     };
     let hb_script = script_to_harfrust(segment.script);
-    let language = language_to_harfrust(options.language.as_ref());
-    features_to_harfrust(options.features, &mut scx.features);
 
     // Shape a run of the segment with a single font, appending it to `shaped_text`.
-    let mut shape_run = |font: &FontInstance, range: TextRange| {
+    let mut shape_run = |select_font: &mut S, font: &FontInstance, range: TextRange| {
+        // Shaping inputs that are constant over the run.
+        let options = select_font.shape_options(segment, range, font.as_ref());
+        let language = language_to_harfrust(options.language.as_ref());
+        features_to_harfrust(options.features, &mut scx.features);
         let face = cache::ShapeDataKey::new(font.font.data.id(), font.font.index);
         // Create harfrust font instance
         let base_font = scx.shape_data_cache.entry(face, || {
@@ -409,7 +410,7 @@ fn shape_segment(
             range,
             segment,
             is_item_start,
-            options,
+            &options,
             char_info,
             char_style_indices,
             font,
@@ -452,15 +453,13 @@ fn shape_segment(
         // doesn't need a font of its own, so it takes the current run's.
         let is_inline_object = char_info[char_start].is_inline_object();
         if is_inline_object && let Some((run_font, run_range)) = run.take() {
-            shape_run(&run_font, run_range);
+            shape_run(select_font, &run_font, run_range);
             run = Some((run_font, grapheme));
             run_is_inline_object = true;
             continue;
         }
 
-        let font = select_font
-            .select_font(segment, options, char_cluster)
-            .ok_or(())?;
+        let font = select_font.select_font(segment, char_cluster).ok_or(())?;
 
         if let Some((run_font, run_range)) = &mut run
             && run_font.as_ref() == font
@@ -469,16 +468,18 @@ fn shape_segment(
             run_range.byte_range.end = byte_end;
             run_range.char_range.end = char_end;
         } else {
+            // Take ownership of the font, to release the borrow of `select_font`.
+            let font = FontInstance::from(font);
             if let Some((run_font, run_range)) = run.take() {
                 // The font changed: shape the previous run.
-                shape_run(&run_font, run_range);
+                shape_run(select_font, &run_font, run_range);
             }
-            run = Some((font.into(), grapheme));
+            run = Some((font, grapheme));
             run_is_inline_object = is_inline_object;
         }
     }
     if let Some((run_font, run_range)) = run {
-        shape_run(&run_font, run_range);
+        shape_run(select_font, &run_font, run_range);
     }
 
     Ok(())
@@ -521,13 +522,44 @@ pub(crate) fn script_to_harfrust(script: parlance::Script) -> harfrust::Script {
         .unwrap_or(harfrust::Script::UNKNOWN)
 }
 
-/// Implements font selection for shaping.
+/// Supplies the caller's inputs to [`Shaper::shape_text`]: where to split the text into items, which
+/// font to shape each character cluster with, and the [`ShapeOptions`] of each resulting run.
+///
+/// The methods are called in text order. An implementation is used for a single call to
+/// [`Shaper::shape_text`], and can keep a cursor into the text across method calls.
+//
+// TODO: this trait does more than select fonts, and should be renamed.
 pub trait FontSelector {
+    /// Returns the character offset in the source text at which the next item ends.
+    ///
+    /// Items force a shaping boundary: no shaped run spans across an item boundary. Use them to
+    /// split on properties like shaping-relevant style changes (e.g., font size) or properties like
+    /// language, such that [`Self::shape_options`] is constant over a run. Items are further split
+    /// into [`Segment`]s of constant script and bidirectional text embedding level.
+    ///
+    /// This is called once at the start of each item: first for the item starting at character
+    /// offset 0, and then for each item starting where the previous one ended. All calls to the
+    /// other methods until the next call to this method are for text inside that item. This is no
+    /// longer called once the returned offset is the number of characters in the text, and it is
+    /// never called for empty text.
+    ///
+    /// The returned offset must be strictly greater than the previous item's end (for the first
+    /// item, greater than 0), and must not exceed the number of characters in the text.
+    ///
+    /// Grapheme boundaries are forced at item boundaries. Graphemes can span across segment
+    /// boundaries (and so across shaped runs).
+    //
+    // TODO: grapheme segmentation should be reset at chosen offsets during analysis, instead of a
+    // grapheme boundary being forced at every item boundary here. E.g., three Regional Indicator
+    // Symbols with a reset after the first, should let the second pair form a grapheme. An item
+    // boundary would then only be a shaping boundary.
+    fn next_split(&mut self) -> u32;
+
     /// Called when a new segment starts.
     ///
     /// This can be useful to inspect, e.g., the segment's script.
-    fn begin_segment(&mut self, segment: &Segment, options: &ShapeOptions<'_>) {
-        let _ = (segment, options);
+    fn begin_segment(&mut self, segment: &Segment) {
+        let _ = segment;
     }
 
     /// Called once per character cluster within the current segment.
@@ -539,7 +571,31 @@ pub trait FontSelector {
     fn select_font(
         &mut self,
         segment: &Segment,
-        options: &ShapeOptions<'_>,
         cluster: &mut CharCluster,
     ) -> Option<FontInstanceRef<'_>>;
+
+    /// Returns the options to shape a run with.
+    ///
+    /// This is called once per run, after font selection has determined the run: `run` is a maximal
+    /// range of character clusters inside `segment` for which [`Self::select_font`] returned
+    /// `font`, or a single inline object (which takes the font of the run preceding it in the
+    /// segment, if any).
+    ///
+    /// Font selection does not see these options. If, e.g., the font fallback of
+    /// [`Self::select_font`] depends on the language, it is up to the implementation to use the
+    /// same language there as it returns in [`ShapeOptions::language`] here.
+    //
+    // TODO: we probably should allow users to pass in some data (like we allow passing
+    // style_indices elsewhere), which we copy onto `ShapedRun`. That allows users to easily
+    // correlate `ShapedRun`s with some data they themselves hold.
+    //
+    // This is potentially important for better correctness in `parley`: it itemizes based on
+    // `nearly_eq` of shaping-relevant styles like font size, i.e., it should then read that item's
+    // style to know the font size, even though it may be different for the run.
+    fn shape_options(
+        &mut self,
+        segment: &Segment,
+        run: TextRange,
+        font: FontInstanceRef<'_>,
+    ) -> ShapeOptions<'_>;
 }

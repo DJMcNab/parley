@@ -645,7 +645,7 @@ pub(crate) mod tests {
     use crate::{
         Analysis, AnalysisOptions, Analyzer, FontInstance, FontInstanceRef, FontSelector,
         ShapeOptions, Shaper,
-        itemize::{Item, Segment},
+        itemize::{Segment, TextRange},
         shape::CharCluster,
     };
 
@@ -659,39 +659,70 @@ pub(crate) mod tests {
         "../../../parley_dev/assets/fonts/noto_color_emoji/NotoColorEmoji-Subset.ttf"
     );
 
-    /// A [`FontSelector`] shaping everything with a single font.
+    /// Selects the font of a character cluster, for [`TestSelector`].
+    pub(crate) trait SelectFont {
+        fn select_font(&mut self, cluster: &mut CharCluster) -> FontInstanceRef<'_>;
+    }
+
+    /// Shapes everything with a single font.
     pub(crate) struct SingleFont(pub(crate) FontInstance);
 
-    impl FontSelector for SingleFont {
-        fn select_font(
-            &mut self,
-            _item: &Segment,
-            _options: &ShapeOptions<'_>,
-            _cluster: &mut CharCluster,
-        ) -> Option<FontInstanceRef<'_>> {
-            Some(self.0.as_ref())
+    impl SelectFont for SingleFont {
+        fn select_font(&mut self, _cluster: &mut CharCluster) -> FontInstanceRef<'_> {
+            self.0.as_ref()
         }
     }
 
-    /// A [`FontSelector`] shaping clusters starting with a particular character with one font, and
-    /// all other clusters with another, to split the text into runs at that character.
+    /// Shapes clusters starting with a particular character with one font, and all other clusters
+    /// with another, to split the text into runs at that character.
     pub(crate) struct FontForChar {
         pub(crate) ch: char,
         pub(crate) font: FontInstance,
         pub(crate) other_font: FontInstance,
     }
 
-    impl FontSelector for FontForChar {
+    impl SelectFont for FontForChar {
+        fn select_font(&mut self, cluster: &mut CharCluster) -> FontInstanceRef<'_> {
+            if cluster.chars()[0].ch == self.ch {
+                self.font.as_ref()
+            } else {
+                self.other_font.as_ref()
+            }
+        }
+    }
+
+    /// A [`FontSelector`] splitting the text into items ending at `item_ends`, selecting fonts
+    /// using `fonts`, and shaping every run with the same options.
+    struct TestSelector<F> {
+        item_ends: vec::IntoIter<u32>,
+        fonts: F,
+    }
+
+    impl<F: SelectFont> FontSelector for TestSelector<F> {
+        fn next_split(&mut self) -> u32 {
+            self.item_ends.next().unwrap()
+        }
+
         fn select_font(
             &mut self,
             _segment: &Segment,
-            _options: &ShapeOptions<'_>,
             cluster: &mut CharCluster,
         ) -> Option<FontInstanceRef<'_>> {
-            if cluster.chars()[0].ch == self.ch {
-                Some(self.font.as_ref())
-            } else {
-                Some(self.other_font.as_ref())
+            Some(self.fonts.select_font(cluster))
+        }
+
+        fn shape_options(
+            &mut self,
+            _segment: &Segment,
+            _run: TextRange,
+            _font: FontInstanceRef<'_>,
+        ) -> ShapeOptions<'_> {
+            ShapeOptions {
+                font_size: 32.0,
+                point_size: 32.0,
+                language: None,
+                features: &[],
+                variations: &[],
             }
         }
     }
@@ -724,30 +755,23 @@ pub(crate) mod tests {
 
     pub(crate) fn shape_with_font_selector(
         text: &str,
-        select_font: impl FontSelector,
+        fonts: impl SelectFont,
         produce_safe_to_concat_flags: bool,
     ) -> ShapedText {
         let analysis = analyze(text);
         let mut shaper = Shaper::default();
         let mut shaped = ShapedText::new();
 
-        let char_style_indices = vec![0; text.chars().count()];
-        let items = [Item {
-            char_end: text.chars().count().try_into().unwrap(),
-            options: ShapeOptions {
-                font_size: 32.0,
-                point_size: 32.0,
-                language: None,
-                features: &[],
-                variations: &[],
-            },
-        }];
+        let char_count = text.chars().count();
+        let char_style_indices = vec![0; char_count];
         shaper.shape_text(
             text,
             &analysis,
             &char_style_indices,
-            items,
-            select_font,
+            TestSelector {
+                item_ends: vec![char_count.try_into().unwrap()].into_iter(),
+                fonts,
+            },
             produce_safe_to_concat_flags,
             &mut shaped,
         );
@@ -913,34 +937,14 @@ pub(crate) mod tests {
         let mut shaped = ShapedText::new();
 
         // ...split over two items.
-        let items = [
-            Item {
-                char_end: 1,
-                options: ShapeOptions {
-                    font_size: 32.0,
-                    point_size: 32.0,
-                    language: None,
-                    features: &[],
-                    variations: &[],
-                },
-            },
-            Item {
-                char_end: text.chars().count().try_into().unwrap(),
-                options: ShapeOptions {
-                    font_size: 32.0,
-                    point_size: 32.0,
-                    language: None,
-                    features: &[],
-                    variations: &[],
-                },
-            },
-        ];
         shaper.shape_text(
             text,
             &analysis,
             &char_style_indices,
-            items,
-            SingleFont(font),
+            TestSelector {
+                item_ends: vec![1, 2].into_iter(),
+                fonts: SingleFont(font),
+            },
             false,
             &mut shaped,
         );

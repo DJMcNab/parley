@@ -677,7 +677,7 @@ fn build_into_layout<B: Brush>(
             &mut lcx.scx,
             text,
             layout,
-            &mut lcx.style_features,
+            &mut lcx.item_features,
         );
     }
 
