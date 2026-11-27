@@ -65,17 +65,25 @@ pub(crate) fn shape_text<'a, B: Brush>(
 
     let mut fq = fcx.collection.query(&mut fcx.source_cache);
 
-    let font_selector = FontSelector::new(
-        &mut fq,
+    let font_selector = FontSelector {
+        query: &mut fq,
+        fonts_id: None,
         rcx,
         styles,
-        text,
         char_style_indices,
-        floated_boxes,
-        shaping_splits,
         scale,
+        chars: text.char_indices().enumerate().peekable(),
+        floated_boxes: floated_boxes.iter().peekable(),
+        shaping_splits: shaping_splits.iter().copied().peekable(),
+        item_start_char: 0,
+        item_style_index: 0,
         item_features,
-    );
+        item_has_merged_features: false,
+        style_index: 0,
+        attrs: fontique::Attributes::default(),
+        query_yields_font: None,
+        last_resort_font: LastResortFont::Unresolved,
+    };
 
     scx.shape_text(
         text,
@@ -146,46 +154,6 @@ struct FontSelector<'a, 'b, B: Brush> {
 
     /// The font to use if [`Self::query`] doesn't return any font.
     last_resort_font: LastResortFont,
-}
-
-impl<'a, 'b, B: Brush> FontSelector<'a, 'b, B> {
-    /// Construct a new `FontSelector`.
-    ///
-    /// If `query` ends up not returning a font for a query, the `last_resort_font` is returned
-    /// instead.
-    fn new(
-        query: &'b mut Query<'a>,
-        rcx: &'a ResolveContext,
-        styles: &'a [ResolvedStyle<B>],
-        text: &'b str,
-        char_style_indices: &'b [u16],
-        floated_boxes: &'b [FloatedBox],
-        shaping_splits: &'b [usize],
-        scale: f32,
-        item_features: &'b mut Vec<FontFeature>,
-    ) -> Self {
-        let attrs = fontique::Attributes::default();
-
-        Self {
-            query,
-            fonts_id: None,
-            rcx,
-            styles,
-            char_style_indices,
-            scale,
-            chars: text.char_indices().enumerate().peekable(),
-            floated_boxes: floated_boxes.iter().peekable(),
-            shaping_splits: shaping_splits.iter().copied().peekable(),
-            item_start_char: 0,
-            item_style_index: 0,
-            item_features,
-            item_has_merged_features: false,
-            style_index: 0,
-            attrs,
-            query_yields_font: None,
-            last_resort_font: LastResortFont::Unresolved,
-        }
-    }
 }
 
 impl<'a, 'b, B: Brush> parley_engine::FontSelector for FontSelector<'a, 'b, B> {
