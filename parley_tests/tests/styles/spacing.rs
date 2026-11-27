@@ -174,6 +174,15 @@ fn style_letter_spacing_ignores_default_ignorables() {
     }
 }
 
+/// See <https://www.w3.org/TR/css-text-4/#cursive-tracking>
+#[test]
+fn style_letter_spacing_cursive() {
+    let mut env = TestEnv::new(test_name!(), None);
+    let text = "Hello مرحبا";
+    let layout = build_with_letter_spacing(&mut env, text, 8.0);
+    env.check_layout_snapshot(&layout);
+}
+
 // ============================================================================
 // WordSpacing Tests
 // ============================================================================
