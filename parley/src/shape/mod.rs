@@ -191,7 +191,11 @@ pub(crate) fn shape_text<'a, B: Brush>(
         let shaped_run = &layout.data.shaped_text.runs()[shaped_run_idx];
         let run_style_index = char_style_indices[shaped_run.range.char_range.start];
         let run_style = &styles[usize::from(run_style_index)];
-
+        let letter_spacing = if shaped_run.script.is_cursive() {
+            0.
+        } else {
+            run_style.letter_spacing
+        };
         layout.data.process_shaped_run(
             shaped_run_idx,
             // TODO: should we get the *item's* style here?
@@ -200,7 +204,7 @@ pub(crate) fn shape_text<'a, B: Brush>(
             // we probably shouldn't itemize on them; we should just ensure we don't ligate if
             // they're non-zero).
             run_style,
-            Spacing::new(run_style.word_spacing, run_style.letter_spacing),
+            Spacing::new(run_style.word_spacing, letter_spacing),
             char_style_indices,
         );
     }

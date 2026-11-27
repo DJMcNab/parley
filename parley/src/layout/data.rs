@@ -29,9 +29,6 @@ pub(crate) struct RunData {
     pub line_height: f32,
     /// Additional spacing inserted between this run's atoms.
     ///
-    /// TODO: Letter spacing in the form of gaps should not be applied between cursive scripts, see
-    /// [CSS Text 4 § 8.2.1][css-spacing-cursive]. Currently we erroneously *do* apply it.
-    ///
     /// [css-spacing-cursive]: https://www.w3.org/TR/css-text-4/#cursive-tracking
     pub(crate) spacing: Spacing,
     /// The box metrics this run adds to the line box, if this run has uniform box metrics.
