@@ -975,7 +975,6 @@ mod tests {
     /// A [`FontSelector`] shaping everything with a single font.
     struct SingleFont {
         font: FontInstance,
-        /// The number of characters in the text; the text is shaped as a single item.
         char_count: u32,
     }
 

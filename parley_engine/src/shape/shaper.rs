@@ -15,12 +15,10 @@ use crate::{
     shape::{CharCluster, cache},
 };
 
-/// Shaping options for one run.
+/// Shaping options for one run, returned by [`FontSelector::shape_options`].
 ///
-/// These are styling options relevant for shaping. They're styling, in that they're not derived
-/// from the underlying text. They are returned by [`FontSelector::shape_options`] for each run
-/// when you [shape the text][`Shaper::shape_text`]. You should split the text into items (see
-/// [`FontSelector::next_split`]) at the points where these options may change.
+/// Split the text via [`FontSelector::next_split`] wherever these options change independently of
+/// segment or font boundaries.
 #[derive(Debug)]
 pub struct ShapeOptions<'a> {
     /// The font size to shape the run with.
@@ -161,11 +159,9 @@ impl Shaper {
     ///
     /// The `text` passed in must be the same as used for producing `analysis`.
     ///
-    /// The text is split into items at the offsets returned by
-    /// [`select_font.next_split`][FontSelector::next_split], and further itemized into
-    /// individually-shapeable segments of constant bidi level and script. Items should be used to
-    /// split on properties like shaping-relevant style changes (e.g., font size) or properties like
-    /// language.
+    /// The text is split into items at the character offsets returned by
+    /// [`FontSelector::next_split`], and each item is further divided into [`Segment`]s of constant
+    /// bidi level and script.
     ///
     /// `char_style_indices` holds per-character style indices; these are copied onto
     /// [`Character`][super::Character`] and [`ShapedCluster`][super::ShapedCluster]. A shaped
@@ -174,10 +170,9 @@ impl Shaper {
     /// Characters that don't have a particular script have their script resolved based on
     /// surrounding context (see [`Segment::script`]).
     ///
-    /// Each segment is then broken into runs of maximal sequences of character clusters for which
-    /// [`select_font.select_font`][FontSelector::select_font] returns the same font. Each run is
-    /// shaped with the options returned by
-    /// [`select_font.shape_options`][FontSelector::shape_options].
+    /// Each segment is then broken into maximal runs of character clusters assigned the same font by
+    /// [`FontSelector::select_font`], and each run is shaped with the options from
+    /// [`FontSelector::shape_options`].
     ///
     /// If `produce_safe_to_concat_flags` is `true`, shaping records which shaped clusters are [safe
     /// to concatenate before](super::ShapedCluster::is_safe_to_concat_before), and
@@ -191,9 +186,9 @@ impl Shaper {
     ///
     /// # Panics
     ///
-    /// Panics if the offsets returned by `select_font.next_split` are not strictly increasing or
-    /// exceed the number of characters in the text, or if the font returned by
-    /// `select_font.select_font` is malformed.
+    /// Panics if the offsets returned by [`FontSelector::next_split`] are not strictly increasing
+    /// (starting above `0`) or exceed the character count of `text`, or if a font returned by
+    /// [`FontSelector::select_font`] is malformed.
     pub fn shape_text(
         &mut self,
         text: &str,
@@ -278,8 +273,7 @@ impl Shaper {
 
 /// Shape one segment.
 ///
-/// `is_item_start` is `true` iff the segment is the first of its item (see
-/// [`FontSelector::next_split`]).
+/// `is_item_start` is `true` iff the segment is the first of its item.
 ///
 /// Returns `Err(())` if shaping should be aborted, which happens iff [`FontSelector::select_font`]
 /// returned `None`.
@@ -320,7 +314,6 @@ fn shape_segment<S: FontSelector>(
 
     // Shape a run of the segment with a single font, appending it to `shaped_text`.
     let mut shape_run = |select_font: &mut S, font: &FontInstance, range: TextRange| {
-        // Shaping inputs that are constant over the run.
         let options = select_font.shape_options(segment, range, font.as_ref());
         let language = language_to_harfrust(options.language.as_ref());
         features_to_harfrust(options.features, &mut scx.features);
@@ -468,7 +461,7 @@ fn shape_segment<S: FontSelector>(
             run_range.byte_range.end = byte_end;
             run_range.char_range.end = char_end;
         } else {
-            // Take ownership of the font, to release the borrow of `select_font`.
+            // Release the borrow on `select_font` before calling `shape_run`.
             let font = FontInstance::from(font);
             if let Some((run_font, run_range)) = run.take() {
                 // The font changed: shape the previous run.
@@ -522,37 +515,27 @@ pub(crate) fn script_to_harfrust(script: parlance::Script) -> harfrust::Script {
         .unwrap_or(harfrust::Script::UNKNOWN)
 }
 
-/// Supplies the caller's inputs to [`Shaper::shape_text`]: where to split the text into items, which
-/// font to shape each character cluster with, and the [`ShapeOptions`] of each resulting run.
+/// Callbacks for itemizing, font selection, and shaping options during [`Shaper::shape_text`].
 ///
-/// The methods are called in text order. An implementation is used for a single call to
-/// [`Shaper::shape_text`], and can keep a cursor into the text across method calls.
+/// For each item, [`Self::next_split`] is called once, followed by [`Self::begin_segment`],
+/// [`Self::select_font`], and [`Self::shape_options`] for all segments and runs within that item
+/// before advancing to the next item.
 //
 // TODO: this trait does more than select fonts, and should be renamed.
 pub trait FontSelector {
-    /// Returns the character offset in the source text at which the next item ends.
+    /// Returns the exclusive character offset where the next item ends.
     ///
-    /// Items force a shaping boundary: no shaped run spans across an item boundary. Use them to
-    /// split on properties like shaping-relevant style changes (e.g., font size) or properties like
-    /// language, such that [`Self::shape_options`] is constant over a run. Items are further split
-    /// into [`Segment`]s of constant script and bidirectional text embedding level.
+    /// Items force both a shaping boundary and a grapheme boundary. Split wherever
+    /// shaping-relevant properties (such as font size, language, or features) change so that
+    /// [`Self::shape_options`] is constant over each run.
     ///
-    /// This is called once at the start of each item: first for the item starting at character
-    /// offset 0, and then for each item starting where the previous one ended. All calls to the
-    /// other methods until the next call to this method are for text inside that item. This is no
-    /// longer called once the returned offset is the number of characters in the text, and it is
-    /// never called for empty text.
-    ///
-    /// The returned offset must be strictly greater than the previous item's end (for the first
-    /// item, greater than 0), and must not exceed the number of characters in the text.
-    ///
-    /// Grapheme boundaries are forced at item boundaries. Graphemes can span across segment
-    /// boundaries (and so across shaped runs).
+    /// Called once per item until the end of the text is reached (never called for empty text).
+    /// Each offset must be strictly greater than the previous one (starting above `0`) and at most
+    /// the character count of the text.
     //
-    // TODO: grapheme segmentation should be reset at chosen offsets during analysis, instead of a
-    // grapheme boundary being forced at every item boundary here. E.g., three Regional Indicator
-    // Symbols with a reset after the first, should let the second pair form a grapheme. An item
-    // boundary would then only be a shaping boundary.
+    // TODO: reset grapheme segmentation at chosen offsets during analysis instead of forcing a
+    // grapheme boundary here (e.g., three Regional Indicator Symbols split after the first should
+    // let the second pair form a grapheme).
     fn next_split(&mut self) -> u32;
 
     /// Called when a new segment starts.
@@ -574,16 +557,10 @@ pub trait FontSelector {
         cluster: &mut CharCluster,
     ) -> Option<FontInstanceRef<'_>>;
 
-    /// Returns the options to shape a run with.
+    /// Returns the shaping options for `run` within `segment`, shaped with `font`.
     ///
-    /// This is called once per run, after font selection has determined the run: `run` is a maximal
-    /// range of character clusters inside `segment` for which [`Self::select_font`] returned
-    /// `font`, or a single inline object (which takes the font of the run preceding it in the
-    /// segment, if any).
-    ///
-    /// Font selection does not see these options. If, e.g., the font fallback of
-    /// [`Self::select_font`] depends on the language, it is up to the implementation to use the
-    /// same language there as it returns in [`ShapeOptions::language`] here.
+    /// Called once per run after font selection finishes accumulating it (which may be after
+    /// [`Self::select_font`] has already been called for the first cluster of the next run).
     //
     // TODO: we probably should allow users to pass in some data (like we allow passing
     // style_indices elsewhere), which we copy onto `ShapedRun`. That allows users to easily

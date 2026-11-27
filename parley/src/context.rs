@@ -24,7 +24,7 @@ use crate::inline_box::{FloatedBox, LayoutInlineBox};
 pub struct LayoutContext<B: Brush = [u8; 4]> {
     pub(crate) rcx: ResolveContext,
     pub(crate) style_table: Vec<ResolvedStyle<B>>,
-    /// Scratch for the font features an item is shaped with.
+    /// Scratch buffer for font features during shaping.
     pub(crate) item_features: Vec<FontFeature>,
     pub(crate) style_runs: Vec<StyleRun>,
     pub(crate) inline_boxes: Vec<LayoutInlineBox>,

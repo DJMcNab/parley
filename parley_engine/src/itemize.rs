@@ -20,12 +20,10 @@ pub struct TextRange {
     pub char_range: Range<usize>,
 }
 
-/// A span of text inside an item with constant script and bidirectional embedding level.
+/// A span of text within an item with constant script and bidirectional embedding level.
 ///
-/// Items are the spans of text between the offsets returned by
-/// [`FontSelector::next_split`](crate::FontSelector::next_split). An item cannot always be passed to
-/// the shaper as a single unit. Within an item, the script or bidirectional text embedding level
-/// may change, which requires further splitting the item into segments.
+/// Items are delimited by [`FontSelector::next_split`](crate::FontSelector::next_split) and
+/// split into segments wherever the script or bidi level changes.
 #[derive(Clone, Debug)]
 pub struct Segment {
     /// The text range of this item.

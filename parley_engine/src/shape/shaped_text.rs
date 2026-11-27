@@ -659,7 +659,6 @@ pub(crate) mod tests {
         "../../../parley_dev/assets/fonts/noto_color_emoji/NotoColorEmoji-Subset.ttf"
     );
 
-    /// Selects the font of a character cluster, for [`TestSelector`].
     pub(crate) trait SelectFont {
         fn select_font(&mut self, cluster: &mut CharCluster) -> FontInstanceRef<'_>;
     }
@@ -691,8 +690,6 @@ pub(crate) mod tests {
         }
     }
 
-    /// A [`FontSelector`] splitting the text into items ending at `item_ends`, selecting fonts
-    /// using `fonts`, and shaping every run with the same options.
     struct TestSelector<F> {
         item_ends: vec::IntoIter<u32>,
         fonts: F,

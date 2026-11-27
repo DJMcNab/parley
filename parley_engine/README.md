@@ -47,14 +47,13 @@ Higher-level users may prefer using [`parley`][parley], which uses this crate an
 layout and styling.
 
 ```rust
-/// Shapes the text as a single item, with the same options for every run.
 struct Selector {
     char_count: u32,
 }
 
 impl FontSelector for Selector {
     fn next_split(&mut self) -> u32 {
-        // Split where shaping-relevant styles (e.g., font size) change. Here, there's one item.
+        // Treat the whole text as a single item.
         self.char_count
     }
 
@@ -63,7 +62,6 @@ impl FontSelector for Selector {
         _segment: &Segment,
         cluster: &mut CharCluster,
     ) -> Option<FontInstanceRef<'_>> {
-        // Select a font covering the cluster.
         select_font_for(cluster)
     }
 
@@ -97,10 +95,9 @@ shaper.shape_text(
     text,
     &analysis,
     &char_style_indices,
-    // Splits the text into items, selects fonts, and provides shaping options.
     Selector { char_count: char_count.try_into().unwrap() },
-     false, // Don't produce safe-to-concat flags.
-     &mut shaped_text,
+    false, // Don't produce safe-to-concat flags.
+    &mut shaped_text,
 );
 
 for (run_idx, run) in shaped_text.runs().iter().enumerate() {

@@ -118,35 +118,26 @@ struct FontSelector<'a, 'b, B: Brush> {
     fonts_id: Option<usize>,
     rcx: &'a ResolveContext,
     styles: &'a [ResolvedStyle<B>],
-    /// The style of each character.
     char_style_indices: &'b [u16],
-    /// The scale factor of the layout.
     scale: f32,
 
-    /// The text's characters, positioned at [`Self::item_start_char`].
+    /// Positioned at [`Self::item_start_char`].
     //
     // TODO: we currently walk characters to find item boundaries, but we could instead just walk
     // boundaries of styles, explicit splits, and floated boxes.
     chars: Peekable<Enumerate<CharIndices<'b>>>,
-    /// The floated boxes not yet passed by [`Self::chars`].
     floated_boxes: Peekable<slice::Iter<'b, FloatedBox>>,
-    /// The explicit shaping splits not yet passed by [`Self::chars`].
     shaping_splits: Peekable<Copied<slice::Iter<'b, usize>>>,
-    /// The first character not yet covered by an item.
+    /// Start character index of the next item.
     item_start_char: usize,
-    /// The style the current item is shaped with, which is the style of its first character.
-    ///
-    /// Other characters in the item may have a different style, but that style then doesn't differ
-    /// in a way that is relevant for shaping.
+    /// Style index for the current item's shaping options.
     item_style_index: u16,
-    /// The font features of the current item, if these are not just its style's font features.
-    ///
-    /// This merges the style's font features with letter-spacing ligature suppression.
+    /// Scratch buffer for merged font features, used when [`Self::item_has_merged_features`] is
+    /// set.
     item_features: &'b mut Vec<FontFeature>,
-    /// Whether the current item is shaped with [`Self::item_features`].
     item_has_merged_features: bool,
 
-    /// The style of the last cluster a font was selected for.
+    /// Style index of the last cluster a font was selected for.
     style_index: u16,
     attrs: fontique::Attributes,
 
@@ -198,8 +189,7 @@ impl<'a, 'b, B: Brush> FontSelector<'a, 'b, B> {
 }
 
 impl<'a, 'b, B: Brush> parley_engine::FontSelector for FontSelector<'a, 'b, B> {
-    /// Split when shaping-relevant style properties change, at explicit shaping splits, and at
-    /// floated boxes.
+    // Split on shaping-relevant style changes, explicit splits, and floated boxes.
     fn next_split(&mut self) -> u32 {
         let styles = self.styles;
         let char_count = self.char_style_indices.len();
@@ -223,8 +213,7 @@ impl<'a, 'b, B: Brush> parley_engine::FontSelector for FontSelector<'a, 'b, B> {
             let mut split = false;
             while let Some(floated_box) = self.floated_boxes.peek() {
                 if floated_box.index < byte_index {
-                    // Floated boxes *before* this index are popped (this occurs for boxes at the
-                    // start of the text, where there is nothing to split).
+                    // Pop boxes before this index (e.g., at the start of the text).
                     self.floated_boxes.next();
                 } else if floated_box.index == byte_index {
                     self.floated_boxes.next();
