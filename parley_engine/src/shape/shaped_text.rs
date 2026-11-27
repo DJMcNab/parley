@@ -6,7 +6,7 @@
 use core::range::Range;
 
 use alloc::vec::Vec;
-use parlance::{BidiLevel, FontFeature, Language, NormalizedCoord, Script};
+use parlance::{BidiLevel, Language, NormalizedCoord, Script};
 
 use crate::{
     CharInfo, FontInstance, Glyph,
@@ -14,8 +14,9 @@ use crate::{
 };
 
 use super::{
-    Character, CharacterFlags, ShapedCluster, ShapedClusterFlags, Whitespace, atom::ShapedSlice,
-    shaper::ShapeOptions,
+    Character, CharacterFlags, ShapedCluster, ShapedClusterFlags, Whitespace,
+    atom::ShapedSlice,
+    shaper::{RangedFeature, ShapeOptions},
 };
 
 /// Metrics that apply to the glyphs of a font.
@@ -125,7 +126,7 @@ pub struct ShapedText {
     glyphs: Vec<Glyph>,
     fonts: Vec<FontInstance>,
     normalized_coords: Vec<NormalizedCoord>,
-    features: Vec<FontFeature>,
+    features: Vec<RangedFeature>,
     /// See [`Self::has_safe_to_concat_flags`].
     pub(crate) has_safe_to_concat_flags: bool,
 }
@@ -268,9 +269,12 @@ impl ShapedText {
 
     /// The font features used by runs in this shaped text.
     ///
-    /// [`ShapedRun::features_range`] splits this into per-run slices.
+    /// [`ShapedRun::features_range`] splits this into per-run slices. The
+    /// [range][`RangedFeature::char_range`] of each feature is clipped to its run, and is a range
+    /// of characters in the source text, like the features passed to
+    /// [`Shaper::shape_text`](crate::Shaper::shape_text).
     #[inline(always)]
-    pub fn features(&self) -> &[FontFeature] {
+    pub fn features(&self) -> &[RangedFeature] {
         &self.features
     }
 
@@ -282,6 +286,7 @@ impl ShapedText {
         segment: &Segment,
         is_item_start: bool,
         options: &ShapeOptions<'_>,
+        features: &[RangedFeature],
         char_info: &[CharInfo],
         char_style_indices: &[u16],
         font: &FontInstance,
@@ -307,7 +312,7 @@ impl ShapedText {
 
         let features_range = {
             let start = self.features.len();
-            self.features.extend_from_slice(options.features);
+            self.features.extend_from_slice(features);
             Range::from(start..self.features.len())
         };
 
@@ -644,7 +649,7 @@ pub(crate) mod tests {
 
     use crate::{
         Analysis, AnalysisOptions, Analyzer, FontInstance, FontInstanceRef, FontSelector,
-        ShapeOptions, Shaper,
+        RangedFeature, ShapeOptions, Shaper,
         itemize::{Item, Segment},
         shape::CharCluster,
     };
@@ -719,12 +724,13 @@ pub(crate) mod tests {
     }
 
     fn shape_with_font(text: &str, font_data: &'static [u8]) -> ShapedText {
-        shape_with_font_selector(text, SingleFont(font_instance(font_data)), false)
+        shape_with_font_selector(text, SingleFont(font_instance(font_data)), &[], false)
     }
 
     pub(crate) fn shape_with_font_selector(
         text: &str,
         select_font: impl FontSelector,
+        features: &[RangedFeature],
         produce_safe_to_concat_flags: bool,
     ) -> ShapedText {
         let analysis = analyze(text);
@@ -738,7 +744,6 @@ pub(crate) mod tests {
                 font_size: 32.0,
                 point_size: 32.0,
                 language: None,
-                features: &[],
                 variations: &[],
             },
         }];
@@ -747,6 +752,7 @@ pub(crate) mod tests {
             &analysis,
             &char_style_indices,
             items,
+            features,
             select_font,
             produce_safe_to_concat_flags,
             &mut shaped,
@@ -771,6 +777,7 @@ pub(crate) mod tests {
                 font: font_instance(NOTO_COLOR_EMOJI),
                 other_font: font_instance(ROBOTO),
             },
+            &[],
             false,
         );
 
@@ -920,7 +927,6 @@ pub(crate) mod tests {
                     font_size: 32.0,
                     point_size: 32.0,
                     language: None,
-                    features: &[],
                     variations: &[],
                 },
             },
@@ -930,7 +936,6 @@ pub(crate) mod tests {
                     font_size: 32.0,
                     point_size: 32.0,
                     language: None,
-                    features: &[],
                     variations: &[],
                 },
             },
@@ -940,6 +945,7 @@ pub(crate) mod tests {
             &analysis,
             &char_style_indices,
             items,
+            &[],
             SingleFont(font),
             false,
             &mut shaped,

@@ -7,18 +7,16 @@ use core::ops::Range;
 
 use alloc::{vec, vec::Vec};
 
-use parley_engine::{Analysis, Analyzer, InlineObject, LineBreakConfig, Shaper};
+use parley_engine::{Analysis, Analyzer, InlineObject, LineBreakConfig, RangedFeature, Shaper};
 
 use super::FontContext;
 use super::builder::{BuilderOptions, RangedBuilder, StyleRunBuilder};
 use super::resolve::tree::TreeStyleBuilder;
 use super::resolve::{RangedStyleBuilder, ResolveContext, ResolvedStyle, StyleRun};
-use super::style::{Brush, FontFeature, TextStyle};
+use super::style::{Brush, TextStyle};
 
 use crate::builder::TreeBuilder;
 use crate::inline_box::{FloatedBox, LayoutInlineBox};
-
-use smallvec::SmallVec;
 
 /// Shared scratch space used when constructing text layouts.
 ///
@@ -26,8 +24,8 @@ use smallvec::SmallVec;
 pub struct LayoutContext<B: Brush = [u8; 4]> {
     pub(crate) rcx: ResolveContext,
     pub(crate) style_table: Vec<ResolvedStyle<B>>,
-    /// Font features for each style, parallel to `style_table`.
-    pub(crate) style_features: Vec<SmallVec<[FontFeature; 8]>>,
+    /// The font features to shape the text with, including those derived from letter spacing.
+    pub(crate) ranged_features: Vec<RangedFeature>,
     pub(crate) style_runs: Vec<StyleRun>,
     pub(crate) inline_boxes: Vec<LayoutInlineBox>,
     pub(crate) floated_boxes: Vec<FloatedBox>,
@@ -54,7 +52,7 @@ impl<B: Brush> LayoutContext<B> {
         Self {
             rcx: ResolveContext::default(),
             style_table: vec![],
-            style_features: Vec::new(),
+            ranged_features: Vec::new(),
             style_runs: vec![],
             inline_boxes: vec![],
             floated_boxes: vec![],

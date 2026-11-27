@@ -1123,7 +1123,7 @@ impl Reshaper {
         self.buffer.set_pre_context(&text[..bytes.start]);
         self.buffer.set_post_context(&text[bytes.end..]);
 
-        let font_unit_scale = self.shape_like_run(shaped, run);
+        let font_unit_scale = self.shape_like_run(shaped, run, chars.clone().into());
         let (shaped_clusters_range, glyphs_range) = push_glyph_buffer(
             &mut reshaped.shaped_clusters,
             &mut reshaped.glyphs,
@@ -1158,7 +1158,12 @@ impl Reshaper {
     /// The buffer's characters and pre/post context must already be set.
     ///
     /// Returns the font unit scale.
-    fn shape_like_run(&mut self, shaped: &ShapedText, run: &ShapedRun) -> f32 {
+    fn shape_like_run(
+        &mut self,
+        shaped: &ShapedText,
+        run: &ShapedRun,
+        chars: core::range::Range<u32>,
+    ) -> f32 {
         let font = &shaped.fonts()[run.font_index];
         let face = cache::ShapeDataKey::new(font.font.data.id(), font.font.index);
         let base_font = self.shape_data_cache.entry(face, || {
@@ -1183,7 +1188,11 @@ impl Reshaper {
         };
         let hb_script = script_to_harfrust(run.script);
         let language = language_to_harfrust(run.language.as_ref());
-        features_to_harfrust(&shaped.features()[run.features_range], &mut self.features);
+        features_to_harfrust(
+            &shaped.features()[run.features_range],
+            chars,
+            &mut self.features,
+        );
         // Ensure that this logic is the same as in parley_engine/src/shape/shaper.rs
         let plan_key = harfrust::ShapePlanKey::new(&instance, Some(hb_script), direction)
             .language(language.as_ref())
@@ -1290,7 +1299,8 @@ mod tests {
     use alloc::vec::Vec;
 
     use super::{Edit, Range, ReshapedLine, ReshapedText, Reshaper};
-    use crate::{Glyph, ShapedSlice, ShapedText, shape::shaped_text::tests::*};
+    use crate::{Glyph, RangedFeature, ShapedSlice, ShapedText, shape::shaped_text::tests::*};
+    use parlance::{FontFeature, Tag};
 
     type Cluster = (Range<u32>, f32, Vec<Glyph>);
 
@@ -1339,6 +1349,27 @@ mod tests {
     }
 
     #[test]
+    fn reshaping_rebases_feature_ranges_to_the_fragment() {
+        let text = "fi fi fi";
+        let shaped = shape_with_font_selector(
+            text,
+            SingleFont(font_instance(ROBOTO)),
+            &[RangedFeature {
+                feature: FontFeature::new(Tag::new(b"liga"), 0),
+                char_range: (4..5).into(),
+            }],
+            true,
+        );
+
+        // Only the middle "fi" must stay split, despite the fragment starting inside the run.
+        let fragment: Vec<_> = reshape_whole(text, &shaped, 3..8, [None; 2])
+            .into_iter()
+            .map(|(chars, _, _)| chars)
+            .collect();
+        assert_eq!(fragment, [3..4, 4..5, 5..6, 6..8]);
+    }
+
+    #[test]
     fn reshaped_lines() {
         // The following font selector attempts to shape 'س' with Roboto to split the Arabic text
         // into runs mid-word, so we can exercise shaping that depends on context.
@@ -1351,7 +1382,7 @@ mod tests {
         let mut fast_misses = 0;
         for (text, font) in [("office AVA", ROBOTO), ("كتب وهب بسلاسة", NOTO_KUFI_ARABIC)]
         {
-            let shaped = shape_with_font_selector(text, fonts(font), true);
+            let shaped = shape_with_font_selector(text, fonts(font), &[], true);
             let chars = shaped.characters();
             let len = u32::try_from(chars.len()).unwrap();
 
